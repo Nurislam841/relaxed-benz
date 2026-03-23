@@ -62,7 +62,7 @@ function ProgressRing({ progress, size = 64 }: { progress: number; size?: number
         className="stroke-primary"
         initial={{ pathLength: 0 }}
         animate={{ pathLength: Math.max(0, Math.min(1, progress / 100)) }}
-        transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1], delay: 0.4 }}
+        transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number], delay: 0.4 }}
       />
     </svg>
   );
@@ -76,7 +76,7 @@ const HERO_STAGGER: Variants = {
 };
 const HERO_ITEM: Variants = {
   hidden: { opacity: 0, y: 14 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
 };
 
 function CourseHero({
@@ -727,7 +727,7 @@ export default function CourseLayout({ children }: { children: React.ReactNode }
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
             >
               {children}
             </motion.div>

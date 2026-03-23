@@ -32,7 +32,7 @@ function ProgressBar({ courseId }: { courseId: string }) {
           className="h-full bg-primary"
           initial={{ width: 0 }}
           animate={{ width: `${data.progress}%` }}
-          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], delay: 0.3 }}
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] as [number, number, number, number], delay: 0.3 }}
         />
       </div>
     </div>

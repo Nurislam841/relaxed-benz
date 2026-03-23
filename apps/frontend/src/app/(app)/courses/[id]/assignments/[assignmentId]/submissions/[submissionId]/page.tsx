@@ -124,7 +124,7 @@ function AttachmentItem({ att }: { att: SubmissionAttachment }) {
             initial={{ height: 0 }}
             animate={{ height: 'auto' }}
             exit={{ height: 0 }}
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
             className="overflow-hidden"
           >
             <div className="border-t border-border/40 dark:border-white/[0.05]">

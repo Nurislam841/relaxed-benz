@@ -63,7 +63,7 @@ const LIST_CONTAINER: Variants = {
 };
 const CARD_ITEM: Variants = {
   hidden: { opacity: 0, y: 14 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] } },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
 };
 
 // ─── CommentThread ─────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ function CommentThread({ assignmentId, currentUserId }: { assignmentId: string; 
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
-          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
           className="px-4 pb-3 space-y-3"
         >
           {isLoading ? (
@@ -222,7 +222,7 @@ function AssignmentCard({
       <motion.div
         whileHover={{ y: isCritical ? -4 : isNormal ? -1 : -3, scale: isCritical ? 1.018 : isNormal ? 1.003 : 1.008 }}
         animate={{ scale: isCritical ? 1.01 : isNormal ? 0.995 : 1 }}
-        transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
         className={cn(
           'relative rounded-lg border overflow-hidden cursor-default',
           'bg-background shadow-card hover:shadow-lift',
@@ -647,7 +647,7 @@ function TimelineNode({
       <div className={cn('flex-1 min-w-0', isLast ? 'pb-0' : 'pb-4')}>
         <motion.div
           whileHover={{ x: 3 }}
-          transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
           className={cn(
             'rounded-lg border p-3.5 transition-all duration-150',
             'bg-background dark:bg-card/80 dark:backdrop-blur-sm',
@@ -874,7 +874,7 @@ function EmptyState({ canCreate, onCreate }: { canCreate: boolean; onCreate: () 
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
       className="flex flex-col items-center justify-center py-16 text-center"
     >
       <div className="h-14 w-14 rounded-2xl bg-muted dark:bg-white/[0.04] flex items-center justify-center mb-4">

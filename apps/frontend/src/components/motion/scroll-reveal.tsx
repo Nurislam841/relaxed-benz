@@ -20,7 +20,7 @@ export function ScrollReveal({ children, className, delay = 0 }: ScrollRevealPro
       variants={fadeUp}
       initial="hidden"
       animate={inView ? 'visible' : 'hidden'}
-      transition={{ delay, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ delay, duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
       className={className}
     >
       {children}
