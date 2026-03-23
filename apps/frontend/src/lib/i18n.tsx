@@ -432,6 +432,7 @@ const T = {
       feedbackOptional: 'Feedback (optional)',
       feedbackPlaceholder: 'Feedback for student',
       exportFilename: 'grades',
+      exportEmpty: 'No data to export',
     },
     courseAttendance: {
       recordsTab: 'Records',
@@ -446,6 +447,7 @@ const T = {
       markToday: 'Mark Today',
       markTodayHelp: 'Load students from the Participants tab first, then mark here once records exist.',
       noRecords: 'No attendance records yet',
+      exportEmpty: 'No data to export',
     },
     courseParticipants: {
       title: 'Participants',
@@ -911,6 +913,7 @@ const T = {
       feedbackOptional: 'Комментарий (необязательно)',
       feedbackPlaceholder: 'Комментарий для студента',
       exportFilename: 'grades',
+      exportEmpty: 'Нет данных для экспорта',
     },
     courseAttendance: {
       recordsTab: 'Записи',
@@ -925,6 +928,7 @@ const T = {
       markToday: 'Отметить сегодня',
       markTodayHelp: 'Сначала загрузите студентов из вкладки «Участники», затем отмечайте здесь, когда появятся записи.',
       noRecords: 'Записей посещаемости пока нет',
+      exportEmpty: 'Нет данных для экспорта',
     },
     courseParticipants: {
       title: 'Участники',
@@ -1388,6 +1392,7 @@ const T = {
       feedbackOptional: 'Пікір (міндетті емес)',
       feedbackPlaceholder: 'Студентке пікір',
       exportFilename: 'grades',
+      exportEmpty: 'Экспорттауға деректер жоқ',
     },
     courseAttendance: {
       recordsTab: 'Жазбалар',
@@ -1402,6 +1407,7 @@ const T = {
       markToday: 'Бүгін белгілеу',
       markTodayHelp: 'Алдымен студенттерді «Қатысушылар» бетінен жүктеңіз, содан кейін жазбалар шыққанда осында белгілеңіз.',
       noRecords: 'Қатысу жазбалары әлі жоқ',
+      exportEmpty: 'Экспорттауға деректер жоқ',
     },
     courseParticipants: {
       title: 'Қатысушылар',
