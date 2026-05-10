@@ -186,7 +186,7 @@ export default function DashboardPage() {
     queryKey: ['teacher-dashboard'],
     queryFn:  async () => {
       const raw = await api.get<{ items: Course[] } | Course[]>('/courses');
-      const allCourses = Array.isArray(raw) ? raw : raw.items;
+      const allCourses = (Array.isArray(raw) ? raw : raw.items) ?? [];
       const courses = allCourses.filter(c => c.roleInCourse === 'TEACHER');
       const assignmentLists = await Promise.all(
         courses.map(c =>

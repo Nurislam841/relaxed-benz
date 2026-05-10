@@ -29,8 +29,8 @@ export default function SearchPage() {
     enabled: debouncedQuery.length >= 2,
   });
 
-  const total = (data?.courses.length || 0) + (data?.materials.length || 0) +
-    (data?.assignments.length || 0) + (data?.announcements?.length || 0) + (data?.users?.length || 0);
+  const total = (data?.courses?.length ?? 0) + (data?.materials?.length ?? 0) +
+    (data?.assignments?.length ?? 0) + (data?.announcements?.length ?? 0) + (data?.users?.length ?? 0);
   const roleLabel = {
     ADMIN: t.adminCrud.userRoleAdmin,
     TEACHER: t.adminCrud.userRoleTeacher,

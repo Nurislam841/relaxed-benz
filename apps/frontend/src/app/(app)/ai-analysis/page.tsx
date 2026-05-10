@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Sparkles, TrendingUp, AlertTriangle, Target, BookOpen, RotateCcw, User as UserIcon, ChevronRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useMe } from '@/hooks/use-auth';
-import { useLanguage } from '@/lib/i18n';
+import { useLanguage, useT } from '@/lib/i18n';
 import type { AiStudentAnalysis, Course, User } from '@/lib/types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,8 @@ import { cn } from '@/lib/utils';
 export default function AiAnalysisPage() {
   const { data: user } = useMe();
   const { lang } = useLanguage();
+  const t = useT();
+  const ap = (t as any).aiAnalysisPage;
   const isStudent = user?.role === 'STUDENT';
 
   const [selectedStudentId, setSelectedStudentId] = useState('');
@@ -70,14 +72,14 @@ export default function AiAnalysisPage() {
 
   const runAnalysis = async () => {
     if (!selectedStudentId) {
-      toast({ title: 'Select a student first', variant: 'destructive' });
+      toast({ title: ap.selectStudent, variant: 'destructive' });
       return;
     }
     setMode('generating');
     setSteps([
-      { status: 'active', label: 'Gathering grades & attendance', detail: 'querying recent records' },
-      { status: 'pending', label: 'Identifying patterns' },
-      { status: 'pending', label: 'Generating recommendations' },
+      { status: 'active', label: ap.step1, detail: ap.step1Detail },
+      { status: 'pending', label: ap.step2 },
+      { status: 'pending', label: ap.step3 },
     ]);
 
     const t1 = setTimeout(() => {
@@ -105,7 +107,7 @@ export default function AiAnalysisPage() {
     } catch (e: any) {
       clearTimeout(t1);
       setSteps((s) => s.map((x) => (x.status === 'active' ? { ...x, status: 'error' } : x)));
-      toast({ title: 'Failed to analyze', description: e.message, variant: 'destructive' });
+      toast({ title: ap.failedAnalyze, description: e.message, variant: 'destructive' });
       setTimeout(() => setMode('config'), 1500);
     }
   };
@@ -127,14 +129,12 @@ export default function AiAnalysisPage() {
   return (
     <div className="max-w-3xl space-y-6">
       <div className="space-y-2">
-        <Eyebrow>AI Student Analysis</Eyebrow>
+        <Eyebrow>{ap.eyebrow}</Eyebrow>
         <HDisplay size="md" as="h1">
-          Understand <em>where each student stands</em>
+          {ap.heroLeft} <em>{ap.heroEm}</em>
         </HDisplay>
         <p className="text-[14px] text-[var(--fg-muted)] max-w-[60ch]">
-          {isStudent
-            ? 'Get a personalized analysis of your strengths, areas to improve, and risk level — based on your grades and attendance.'
-            : 'Generate a personalized analysis for any enrolled student — strengths, areas to improve, recommendations, and risk level.'}
+          {isStudent ? ap.studentSubtitle : ap.teacherSubtitle}
         </p>
       </div>
 
@@ -144,12 +144,12 @@ export default function AiAnalysisPage() {
           {!isStudent && (
             <>
               <div className="space-y-1.5">
-                <Label>Course (optional — scopes to one course)</Label>
+                <Label>{ap.courseLabel}</Label>
                 <Select
                   value={selectedCourseId}
                   onChange={(e) => setSelectedCourseId(e.target.value)}
                 >
-                  <option value="">All courses</option>
+                  <option value="">{ap.allCourses}</option>
                   {(courses ?? []).map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.code} — {c.title}
@@ -159,12 +159,12 @@ export default function AiAnalysisPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>Student</Label>
+                <Label>{ap.studentLabel}</Label>
                 <Select
                   value={selectedStudentId}
                   onChange={(e) => setSelectedStudentId(e.target.value)}
                 >
-                  <option value="">— Select student —</option>
+                  <option value="">{ap.studentPlaceholder}</option>
                   {(studentList ?? []).map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.fullName} · {s.email}
@@ -176,8 +176,8 @@ export default function AiAnalysisPage() {
           )}
 
           {isStudent && selectedStudent && (
-            <Alert tone="info" icon={<UserIcon className="h-4 w-4" />} title="Analyzing your performance">
-              Self-analysis based on your grades and attendance across all your enrolled courses.
+            <Alert tone="info" icon={<UserIcon className="h-4 w-4" />} title={ap.selfTitle}>
+              {ap.selfBody}
             </Alert>
           )}
 
@@ -189,13 +189,13 @@ export default function AiAnalysisPage() {
             disabled={!selectedStudentId}
           >
             <Sparkles className="h-3.5 w-3.5" />
-            Generate analysis
+            {ap.generate}
           </Button>
         </Card>
       )}
 
       {/* GENERATING */}
-      {mode === 'generating' && <GenerationPanel title="Analyzing student" steps={steps} />}
+      {mode === 'generating' && <GenerationPanel title={ap.generating} steps={steps} />}
 
       {/* RESULTS */}
       {mode === 'results' && analysis && (
@@ -219,7 +219,7 @@ export default function AiAnalysisPage() {
               <div className="relative flex items-center gap-4">
                 <DsAvatar name={selectedStudent.fullName ?? '?'} size={48} />
                 <div className="flex-1 min-w-0">
-                  <Eyebrow>Analysis subject</Eyebrow>
+                  <Eyebrow>{ap.subjectLabel}</Eyebrow>
                   <p className="text-[16px] font-semibold text-[var(--fg)] truncate">
                     {selectedStudent.fullName}
                   </p>
@@ -228,7 +228,7 @@ export default function AiAnalysisPage() {
                   </p>
                 </div>
                 <div className="text-right shrink-0">
-                  <Eyebrow>Risk level</Eyebrow>
+                  <Eyebrow>{ap.riskLevelLabel}</Eyebrow>
                   <Badge tone={riskTone} variant="solid" className="mt-1 capitalize">
                     {analysis.riskLevel}
                   </Badge>
@@ -248,7 +248,7 @@ export default function AiAnalysisPage() {
               >
                 <Sparkles className="h-3 w-3" />
               </div>
-              <Eyebrow>AI overview</Eyebrow>
+              <Eyebrow>{ap.aiOverview}</Eyebrow>
             </div>
             <p className="text-[14px] text-[var(--fg)] leading-[1.6]">{analysis.analysis}</p>
           </Card>
@@ -258,7 +258,7 @@ export default function AiAnalysisPage() {
             <Card padding="lg">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="h-4 w-4 text-[var(--success)]" />
-                <Eyebrow className="text-[var(--success)]">Strengths</Eyebrow>
+                <Eyebrow className="text-[var(--success)]">{ap.strengths}</Eyebrow>
               </div>
               <ul className="space-y-1.5">
                 {analysis.strengths.map((s, i) => (
@@ -279,7 +279,7 @@ export default function AiAnalysisPage() {
             <Card padding="lg">
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle className="h-4 w-4 text-[var(--warning)]" />
-                <Eyebrow className="text-[var(--warning)]">Areas to improve</Eyebrow>
+                <Eyebrow className="text-[var(--warning)]">{ap.areasToImprove}</Eyebrow>
               </div>
               <ul className="space-y-1.5">
                 {analysis.areasToImprove.map((s, i) => (
@@ -300,7 +300,7 @@ export default function AiAnalysisPage() {
             <Card padding="lg">
               <div className="flex items-center gap-2 mb-3">
                 <Target className="h-4 w-4 text-[var(--info)]" />
-                <Eyebrow className="text-[var(--info)]">Recommendations</Eyebrow>
+                <Eyebrow className="text-[var(--info)]">{ap.recommendations}</Eyebrow>
               </div>
               <ul className="space-y-2">
                 {analysis.recommendations.map((s, i) => (
@@ -322,7 +322,7 @@ export default function AiAnalysisPage() {
 
           <Button variant="secondary" size="md" className="w-full" onClick={reset}>
             <RotateCcw className="h-3.5 w-3.5" />
-            New analysis
+            {ap.newAnalysis}
           </Button>
         </div>
       )}
