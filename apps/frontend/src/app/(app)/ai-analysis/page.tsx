@@ -38,7 +38,10 @@ export default function AiAnalysisPage() {
   // List courses (for filter)
   const { data: courses } = useQuery<Course[]>({
     queryKey: ['my-courses-list'],
-    queryFn: () => api.get('/courses'),
+    queryFn: () =>
+      api.get<{ items: Course[] } | Course[]>('/courses').then((r) =>
+        Array.isArray(r) ? r : r.items,
+      ),
   });
 
   // For teachers/admins: list students from enrolled courses

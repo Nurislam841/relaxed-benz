@@ -35,7 +35,10 @@ export default function AdminEnrollmentsPage() {
 
   const { data: courses } = useQuery<Course[]>({
     queryKey: ['courses'],
-    queryFn: () => api.get('/courses?page=1&limit=200'),
+    queryFn: () =>
+      api.get<{ items: Course[] } | Course[]>('/courses?page=1&limit=200').then((r) =>
+        Array.isArray(r) ? r : r.items,
+      ),
   });
 
   const createMutation = useMutation({

@@ -28,7 +28,10 @@ export default function AdminCoursesPage() {
 
   const { data: courses, isLoading } = useQuery<Course[]>({
     queryKey: ['courses', 'admin', page],
-    queryFn: () => api.get(`/courses?page=${page}&limit=${pageSize}`),
+    queryFn: () =>
+      api
+        .get<{ items: Course[] } | Course[]>(`/courses?page=${page}&limit=${pageSize}`)
+        .then((r) => (Array.isArray(r) ? r : r.items)),
   });
 
   const { data: users } = useQuery<User[]>({

@@ -165,13 +165,16 @@ export default function DashboardPage() {
   const { data: upcomingAssignments = [] } = useQuery<Assignment[]>({
     queryKey: ['upcoming-assignments'],
     queryFn:  async () => {
-      const courses = await api.get<Course[]>('/courses');
-      const lists   = await Promise.all(
+      const raw = await api.get<{ items: Course[] } | Course[]>('/courses');
+      const courses = Array.isArray(raw) ? raw : raw.items;
+      const assignmentLists = await Promise.all(
         (courses || []).slice(0, 5).map(c =>
-          api.get<Assignment[]>(`/courses/${c.id}/assignments`).catch(() => [])
+          api.get<{ items: Assignment[] } | Assignment[]>(`/courses/${c.id}/assignments`)
+            .then(r => Array.isArray(r) ? r : r.items)
+            .catch(() => [])
         ),
       );
-      return lists.flat()
+      return assignmentLists.flat()
         .filter(a => new Date(a.dueAt) > new Date())
         .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
         .slice(0, 5);
@@ -182,9 +185,15 @@ export default function DashboardPage() {
   const { data: teacherData, isLoading: teacherLoading } = useQuery<TeacherDashboardData>({
     queryKey: ['teacher-dashboard'],
     queryFn:  async () => {
-      const courses = (await api.get<Course[]>('/courses')).filter(c => c.roleInCourse === 'TEACHER');
+      const raw = await api.get<{ items: Course[] } | Course[]>('/courses');
+      const allCourses = Array.isArray(raw) ? raw : raw.items;
+      const courses = allCourses.filter(c => c.roleInCourse === 'TEACHER');
       const assignmentLists = await Promise.all(
-        courses.map(c => api.get<Assignment[]>(`/courses/${c.id}/assignments`).catch(() => []))
+        courses.map(c =>
+          api.get<{ items: Assignment[] } | Assignment[]>(`/courses/${c.id}/assignments`)
+            .then(r => Array.isArray(r) ? r : r.items)
+            .catch(() => [])
+        )
       );
       const assignments = assignmentLists.flat();
       const submissionLists = await Promise.all(
