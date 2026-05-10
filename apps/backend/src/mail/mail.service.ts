@@ -1,6 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 
+type Lang = 'en' | 'ru' | 'kz' | undefined | null;
+
+function resolveLang(lang: Lang): 'en' | 'ru' | 'kz' {
+  if (lang === 'ru' || lang === 'kz') return lang;
+  return 'en';
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -18,25 +25,56 @@ export class MailService {
     });
   }
 
-  async sendAssignmentCreated(to: string, assignmentTitle: string, courseName: string, dueAt: Date) {
+  async sendAssignmentCreated(
+    to: string,
+    assignmentTitle: string,
+    courseName: string,
+    dueAt: Date,
+    preferredLang?: string | null,
+  ) {
     if (!process.env.SMTP_USER) {
       this.logger.debug(`[EMAIL SKIPPED] Assignment created: ${assignmentTitle} → ${to}`);
       return;
     }
-    await this.send(to, `New Assignment: ${assignmentTitle}`,
-      `<p>A new assignment <strong>${assignmentTitle}</strong> has been added to <strong>${courseName}</strong>.</p>
-       <p>Due: ${dueAt.toLocaleDateString()}</p>`);
+    const lang = resolveLang(preferredLang as Lang);
+    const T = {
+      en: { subject: 'New Assignment', body: 'A new assignment', addedTo: 'has been added to', due: 'Due' },
+      ru: { subject: 'Новое задание', body: 'Новое задание', addedTo: 'добавлено в курс', due: 'Срок' },
+      kz: { subject: 'Жаңа тапсырма', body: 'Жаңа тапсырма', addedTo: 'қосылды', due: 'Мерзімі' },
+    }[lang];
+    await this.send(
+      to,
+      `${T.subject}: ${assignmentTitle}`,
+      `<p>${T.body} <strong>${assignmentTitle}</strong> ${T.addedTo} <strong>${courseName}</strong>.</p>
+       <p>${T.due}: ${dueAt.toLocaleDateString()}</p>`,
+    );
   }
 
-  async sendGradePublished(to: string, assignmentTitle: string, score: number, maxScore: number, feedback?: string | null) {
+  async sendGradePublished(
+    to: string,
+    assignmentTitle: string,
+    score: number,
+    maxScore: number,
+    feedback?: string | null,
+    preferredLang?: string | null,
+  ) {
     if (!process.env.SMTP_USER) {
       this.logger.debug(`[EMAIL SKIPPED] Grade published for ${assignmentTitle} → ${to}`);
       return;
     }
-    await this.send(to, `Grade Published: ${assignmentTitle}`,
-      `<p>Your assignment <strong>${assignmentTitle}</strong> has been graded.</p>
-       <p>Score: <strong>${score} / ${maxScore}</strong></p>
-       ${feedback ? `<p>Feedback: ${feedback}</p>` : ''}`);
+    const lang = resolveLang(preferredLang as Lang);
+    const T = {
+      en: { subject: 'Grade Published', body: 'Your assignment', graded: 'has been graded', score: 'Score', feedback: 'Feedback' },
+      ru: { subject: 'Оценка выставлена', body: 'Ваше задание', graded: 'было оценено', score: 'Балл', feedback: 'Отзыв' },
+      kz: { subject: 'Баға қойылды', body: 'Сіздің тапсырмаңыз', graded: 'бағаланды', score: 'Балл', feedback: 'Пікір' },
+    }[lang];
+    await this.send(
+      to,
+      `${T.subject}: ${assignmentTitle}`,
+      `<p>${T.body} <strong>${assignmentTitle}</strong> ${T.graded}.</p>
+       <p>${T.score}: <strong>${score} / ${maxScore}</strong></p>
+       ${feedback ? `<p>${T.feedback}: ${feedback}</p>` : ''}`,
+    );
   }
 
   private async send(to: string, subject: string, html: string) {
@@ -47,7 +85,7 @@ export class MailService {
         subject,
         html,
       });
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error(`Failed to send email to ${to}: ${err.message}`);
     }
   }

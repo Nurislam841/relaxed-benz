@@ -38,24 +38,26 @@ enum NotificationType {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  passwordHash  String?        @map("password_hash")
-  fullName      String         @map("full_name")
-  role          Role           @default(STUDENT)
-  groupId       String?        @map("group_id")
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
-  group         Group?         @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  enrollments   Enrollment[]
-  announcements Announcement[]
-  submissions   Submission[]
-  gradesGiven   Grade[]        @relation("GradedBy")
-  notifications Notification[]
-  taughtCourses Course[]       @relation("CourseTeacher")
-  activityLogs  ActivityLog[]
-  attendance    Attendance[]
-  aiRequestLogs AiRequestLog[]
+  id                  String              @id @default(uuid())
+  email               String              @unique
+  passwordHash        String?             @map("password_hash")
+  fullName            String              @map("full_name")
+  role                Role                @default(STUDENT)
+  groupId             String?             @map("group_id")
+  preferredLang       String?             @map("preferred_lang")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  group               Group?              @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  enrollments         Enrollment[]
+  announcements       Announcement[]
+  submissions         Submission[]
+  gradesGiven         Grade[]             @relation("GradedBy")
+  notifications       Notification[]
+  taughtCourses       Course[]            @relation("CourseTeacher")
+  activityLogs        ActivityLog[]
+  attendance          Attendance[]
+  aiRequestLogs       AiRequestLog[]
+  assignmentComments  AssignmentComment[]
 
   @@map("users")
 }
@@ -154,41 +156,86 @@ model Announcement {
 }
 
 model Assignment {
-  id          String       @id @default(uuid())
-  courseId    String       @map("course_id")
+  id          String               @id @default(uuid())
+  courseId    String               @map("course_id")
   title       String
-  description String       @default("")
-  dueAt       DateTime     @map("due_at")
-  maxScore    Int          @default(100) @map("max_score")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
-  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  description String               @default("")
+  dueAt       DateTime             @map("due_at")
+  maxScore    Int                  @default(100) @map("max_score")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  course      Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
   submissions Submission[]
+  resources   AssignmentResource[]
+  comments    AssignmentComment[]
 
   @@index([courseId])
   @@index([dueAt])
   @@map("assignments")
 }
 
+model AssignmentResource {
+  id           String     @id @default(uuid())
+  assignmentId String     @map("assignment_id")
+  fileName     String     @map("file_name")
+  fileUrl      String     @map("file_url")
+  fileSize     Int?       @map("file_size")
+  mimeType     String?    @map("mime_type")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@map("assignment_resources")
+}
+
+model AssignmentComment {
+  id           String     @id @default(uuid())
+  assignmentId String     @map("assignment_id")
+  authorId     String     @map("author_id")
+  body         String     @db.Text
+  createdAt    DateTime   @default(now()) @map("created_at")
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  author       User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@index([authorId])
+  @@map("assignment_comments")
+}
+
 model Submission {
-  id           String           @id @default(uuid())
-  assignmentId String           @map("assignment_id")
-  studentId    String           @map("student_id")
-  contentText  String?          @map("content_text")
-  contentUrl   String?          @map("content_url")
-  fileUrl      String?          @map("file_url")
-  submittedAt  DateTime?        @map("submitted_at")
-  status       SubmissionStatus @default(DRAFT)
-  createdAt    DateTime         @default(now()) @map("created_at")
-  updatedAt    DateTime         @updatedAt @map("updated_at")
-  assignment   Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  student      User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id           String                 @id @default(uuid())
+  assignmentId String                 @map("assignment_id")
+  studentId    String                 @map("student_id")
+  contentText  String?                @map("content_text")
+  contentUrl   String?                @map("content_url")
+  fileUrl      String?                @map("file_url")
+  submittedAt  DateTime?              @map("submitted_at")
+  status       SubmissionStatus       @default(DRAFT)
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
+  assignment   Assignment             @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student      User                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   grade        Grade?
+  attachments  SubmissionAttachment[]
 
   @@unique([assignmentId, studentId])
   @@index([assignmentId])
   @@index([studentId])
   @@map("submissions")
+}
+
+model SubmissionAttachment {
+  id           String     @id @default(uuid())
+  submissionId String     @map("submission_id")
+  fileName     String     @map("file_name")
+  fileUrl      String     @map("file_url")
+  fileSize     Int?       @map("file_size")
+  mimeType     String?    @map("mime_type")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@map("submission_attachments")
 }
 
 model Grade {

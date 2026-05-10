@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Calendar, BookOpen, CalendarDays, Bell, User as UI,
   Shield, Users, Layers, GraduationCap, UserPlus, ChevronDown, Menu, X, Search, Activity,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMe } from '@/hooks/use-auth';
@@ -23,6 +24,7 @@ const MAIN_GROUP: NavItem[] = [
 ];
 
 const SECONDARY_GROUP: NavItem[] = [
+  { href: '/ai-analysis', key: 'aiAnalysis', icon: Sparkles },
   { href: '/search', key: 'search', icon: Search },
   { href: '/notifications', key: 'notifications', icon: Bell },
   { href: '/activity', key: 'activity', icon: Activity },
