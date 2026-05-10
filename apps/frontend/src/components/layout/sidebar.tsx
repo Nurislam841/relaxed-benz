@@ -1,44 +1,52 @@
 'use client';
+
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { cn } from '@/lib/utils';
-import { useMe } from '@/hooks/use-auth';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Calendar, BookOpen, CalendarDays, Bell, User as UI,
   Shield, Users, Layers, GraduationCap, UserPlus, ChevronDown, Menu, X, Search, Activity,
 } from 'lucide-react';
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { stagger, item, slideLeft, fade } from '@/lib/motion';
+import { cn } from '@/lib/utils';
+import { useMe } from '@/hooks/use-auth';
 import { useT } from '@/lib/i18n';
+import { stagger, item, slideLeft, fade } from '@/lib/motion';
 
-const MN_KEYS = [
-  { href: '/dashboard',     key: 'dashboard',     icon: LayoutDashboard },
-  { href: '/schedule',      key: 'schedule',      icon: Calendar },
-  { href: '/courses',       key: 'courses',       icon: BookOpen },
-  { href: '/calendar',      key: 'calendar',      icon: CalendarDays },
-  { href: '/search',        key: 'search',        icon: Search },
+type NavItem = { href: string; key: string; icon: React.ElementType };
+
+const MAIN_GROUP: NavItem[] = [
+  { href: '/dashboard', key: 'dashboard', icon: LayoutDashboard },
+  { href: '/courses', key: 'courses', icon: BookOpen },
+  { href: '/schedule', key: 'schedule', icon: Calendar },
+  { href: '/calendar', key: 'calendar', icon: CalendarDays },
+];
+
+const SECONDARY_GROUP: NavItem[] = [
+  { href: '/search', key: 'search', icon: Search },
   { href: '/notifications', key: 'notifications', icon: Bell },
-  { href: '/activity',      key: 'activity',      icon: Activity },
-  { href: '/profile',       key: 'profile',       icon: UI },
-] as const;
+  { href: '/activity', key: 'activity', icon: Activity },
+  { href: '/profile', key: 'profile', icon: UI },
+];
 
-const AN_KEYS = [
-  { href: '/admin',             key: 'adminOverview', icon: Shield },
-  { href: '/admin/users',       key: 'adminUsers',    icon: Users },
-  { href: '/admin/groups',      key: 'adminGroups',   icon: Layers },
-  { href: '/admin/courses',     key: 'adminCourses',  icon: BookOpen },
-  { href: '/admin/enrollments', key: 'adminEnroll',   icon: UserPlus },
-] as const;
+const ADMIN_GROUP: NavItem[] = [
+  { href: '/admin', key: 'adminOverview', icon: Shield },
+  { href: '/admin/users', key: 'adminUsers', icon: Users },
+  { href: '/admin/groups', key: 'adminGroups', icon: Layers },
+  { href: '/admin/courses', key: 'adminCourses', icon: BookOpen },
+  { href: '/admin/enrollments', key: 'adminEnroll', icon: UserPlus },
+];
 
 export function Sidebar() {
   const path = usePathname();
   const { data: user } = useMe();
   const t = useT();
-  const [ao, sao] = useState(path.startsWith('/admin'));
-  const [mo, smo] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(path.startsWith('/admin'));
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  const ia = (h: string) => path === h || (h !== '/dashboard' && h !== '/admin' && path.startsWith(h + '/'));
+  const isActive = (h: string) =>
+    path === h || (h !== '/dashboard' && h !== '/admin' && path.startsWith(h + '/'));
+
   const roleLabel = user?.role
     ? {
         ADMIN: t.adminCrud.userRoleAdmin,
@@ -47,77 +55,119 @@ export function Sidebar() {
       }[user.role]
     : '';
 
-  const lk = (i: { href: string; key: keyof typeof t.nav; icon: React.ElementType }) => (
-    <motion.div key={i.href} variants={item}>
-      <Link
-        href={i.href}
-        onClick={() => smo(false)}
-        className={cn(
-          'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
-          ia(i.href)
-            ? 'bg-accent text-primary font-medium'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-        )}
-      >
-        <i.icon className="h-4 w-4 shrink-0" />
-        {t.nav[i.key]}
-      </Link>
-    </motion.div>
-  );
+  const renderItem = (i: NavItem) => {
+    const active = isActive(i.href);
+    return (
+      <motion.div key={i.href} variants={item}>
+        <Link
+          href={i.href}
+          onClick={() => setMobileOpen(false)}
+          data-active={active}
+          className={cn(
+            'group relative flex items-center gap-3 px-3 py-1.5 rounded-[6px] text-[13px] font-medium',
+            'transition-colors duration-ds-fast ease-ds-out',
+            active
+              ? 'bg-[var(--accent-100)] text-[var(--accent-700)] dark:bg-[var(--accent-50)]'
+              : 'text-[var(--fg-muted)] hover:bg-[var(--bg-muted)] hover:text-[var(--fg)]'
+          )}
+        >
+          <span
+            aria-hidden
+            className={cn(
+              'w-1 h-1 rounded-full shrink-0',
+              active ? 'bg-[var(--accent-500)]' : 'bg-[var(--fg-subtle)]'
+            )}
+          />
+          <i.icon className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{(t.nav as any)[i.key]}</span>
+        </Link>
+      </motion.div>
+    );
+  };
 
-  const inner = (
+  const navContent = (
     <>
-      <div className="px-5 py-5 border-b border-border">
+      {/* Brand */}
+      <div className="px-5 pb-5 mb-4 border-b border-[var(--border-color)]">
         <Link href="/dashboard" className="flex items-center gap-2.5">
-          <div className="h-7 w-7 rounded bg-primary flex items-center justify-center">
-            <GraduationCap className="h-4 w-4 text-primary-foreground" />
+          <div
+            className="relative w-7 h-7 rounded-[7px] shrink-0"
+            style={{
+              background: 'linear-gradient(135deg, var(--accent-500), var(--accent-700))',
+              boxShadow: 'var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.2)',
+            }}
+          >
+            <span
+              aria-hidden
+              className="absolute inset-[6px] rounded-[4px] mix-blend-overlay"
+              style={{
+                background:
+                  'radial-gradient(circle at 30% 30%, rgba(255,255,255,.85), transparent 50%), conic-gradient(from 200deg, transparent, rgba(255,255,255,.4), transparent)',
+              }}
+            />
           </div>
-          <span className="font-serif text-lg font-semibold text-foreground">UniLMS</span>
+          <div className="flex flex-col leading-tight">
+            <span className="font-serif italic text-[20px] tracking-[-0.01em] text-[var(--fg)]">
+              UniLMS
+            </span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--fg-subtle)]">
+              Learning OS
+            </span>
+          </div>
         </Link>
       </div>
 
       <motion.nav
-        className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto"
         variants={stagger}
         initial="hidden"
         animate="visible"
+        className="flex-1 px-3 pb-4 overflow-y-auto"
       >
-        {MN_KEYS.map(lk)}
+        {/* Main group */}
+        <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--fg-subtle)] px-3 mb-1.5">
+          {t.nav.workspace ?? 'Workspace'}
+        </div>
+        <div className="space-y-px mb-5">
+          {MAIN_GROUP.map(renderItem)}
+        </div>
+
+        {/* Secondary */}
+        <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--fg-subtle)] px-3 mb-1.5">
+          {t.nav.activityGroup ?? 'Activity'}
+        </div>
+        <div className="space-y-px mb-5">
+          {SECONDARY_GROUP.map(renderItem)}
+        </div>
+
         {user?.role === 'ADMIN' && (
           <>
             <motion.button
               variants={item}
-              onClick={() => sao(!ao)}
-              className="flex w-full items-center gap-2 px-3 py-2 mt-5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground hover:text-foreground"
+              type="button"
+              onClick={() => setAdminOpen(!adminOpen)}
+              className="flex w-full items-center gap-1.5 px-3 mb-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--fg-subtle)] hover:text-[var(--fg)] transition-colors"
             >
-              {t.nav.admin}
-              <ChevronDown className={cn('h-3 w-3 ml-auto transition-transform', ao && 'rotate-180')} />
+              <span>{t.nav.admin}</span>
+              <ChevronDown
+                className={cn(
+                  'h-3 w-3 ml-auto transition-transform duration-ds-base',
+                  adminOpen && 'rotate-180'
+                )}
+              />
             </motion.button>
-            <AnimatePresence>
-              {ao && (
+            <AnimatePresence initial={false}>
+              {adminOpen && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
-                  className="overflow-hidden space-y-0.5"
+                  transition={{
+                    duration: 0.25,
+                    ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+                  }}
+                  className="overflow-hidden space-y-px"
                 >
-                  {AN_KEYS.map(i => (
-                    <Link
-                      key={i.href}
-                      href={i.href}
-                      onClick={() => smo(false)}
-                      className={cn(
-                        'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
-                        ia(i.href)
-                          ? 'bg-accent text-primary font-medium'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                      )}
-                    >
-                      <i.icon className="h-4 w-4 shrink-0" />
-                      {t.nav[i.key]}
-                    </Link>
-                  ))}
+                  {ADMIN_GROUP.map(renderItem)}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -125,14 +175,19 @@ export function Sidebar() {
         )}
       </motion.nav>
 
-      <div className="border-t border-border px-4 py-4">
+      {/* User card */}
+      <div className="border-t border-[var(--border-color)] px-4 py-3.5">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary shrink-0">
-            {user?.fullName?.charAt(0) ?? '?'}
+          <div
+            className="h-8 w-8 rounded-full bg-[var(--accent-100)] flex items-center justify-center text-[13px] font-semibold text-[var(--accent-700)] shrink-0"
+          >
+            {user?.fullName?.charAt(0)?.toUpperCase() ?? '?'}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium truncate leading-tight">{user?.fullName}</p>
-            <p className="text-xs text-muted-foreground">{roleLabel}</p>
+            <p className="text-[13px] font-medium truncate leading-tight text-[var(--fg)]">
+              {user?.fullName}
+            </p>
+            <p className="text-[11px] text-[var(--fg-subtle)] font-mono">{roleLabel}</p>
           </div>
         </div>
       </div>
@@ -141,36 +196,42 @@ export function Sidebar() {
 
   return (
     <>
+      {/* Mobile menu button */}
       <button
-        onClick={() => smo(true)}
-        className="fixed top-4 left-4 z-40 lg:hidden rounded-md border border-border bg-background p-2"
+        onClick={() => setMobileOpen(true)}
+        className="fixed top-3 left-3 z-40 lg:hidden rounded-[7px] border border-[var(--border-color)] bg-[var(--surface)] p-2 shadow-ds-xs"
+        aria-label="Open menu"
       >
-        <Menu className="h-5 w-5" />
+        <Menu className="h-4 w-4 text-[var(--fg)]" />
       </button>
 
       {/* Mobile overlay */}
       <AnimatePresence>
-        {mo && (
+        {mobileOpen && (
           <div className="fixed inset-0 z-40 lg:hidden">
             <motion.div
               variants={fade}
               initial="hidden"
               animate="visible"
               exit="hidden"
-              className="fixed inset-0 bg-foreground/20"
-              onClick={() => smo(false)}
+              className="fixed inset-0 bg-[var(--overlay)]"
+              onClick={() => setMobileOpen(false)}
             />
             <motion.div
               variants={slideLeft}
               initial="hidden"
               animate="visible"
               exit="hidden"
-              className="fixed left-0 top-0 bottom-0 w-64 bg-background border-r border-border flex flex-col z-50"
+              className="fixed left-0 top-0 bottom-0 w-[260px] bg-[var(--bg-subtle)] border-r border-[var(--border-color)] flex flex-col z-50 pt-5"
             >
-              <button onClick={() => smo(false)} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
-                <X className="h-5 w-5" />
+              <button
+                onClick={() => setMobileOpen(false)}
+                className="absolute top-3 right-3 text-[var(--fg-subtle)] hover:text-[var(--fg)] p-1"
+                aria-label="Close menu"
+              >
+                <X className="h-4 w-4" />
               </button>
-              {inner}
+              {navContent}
             </motion.div>
           </div>
         )}
@@ -181,9 +242,9 @@ export function Sidebar() {
         variants={slideLeft}
         initial="hidden"
         animate="visible"
-        className="hidden lg:flex lg:flex-col lg:w-64 lg:border-r lg:border-border lg:bg-background lg:fixed lg:inset-y-0"
+        className="hidden lg:flex lg:flex-col lg:w-[248px] lg:border-r lg:border-[var(--border-color)] lg:bg-[var(--bg-subtle)] lg:fixed lg:inset-y-0 lg:pt-5"
       >
-        {inner}
+        {navContent}
       </motion.aside>
     </>
   );

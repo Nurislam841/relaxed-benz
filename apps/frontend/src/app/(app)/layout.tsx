@@ -36,9 +36,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[var(--bg)]">
       <Sidebar />
-      <div className="lg:ml-64">
+      <div className="lg:ml-[248px]">
         <Topbar />
         <AnimatePresence mode="wait">
           <motion.main
@@ -46,7 +46,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             variants={fadeUp}
             initial="hidden"
             animate="visible"
-            className="p-6 lg:p-8"
+            className="px-6 py-8 lg:px-10 lg:py-10 max-w-[1280px]"
           >
             {children}
           </motion.main>

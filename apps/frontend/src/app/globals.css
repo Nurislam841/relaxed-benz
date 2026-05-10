@@ -2,70 +2,368 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   UniLMS Design System — Tokens
+   ========================================================================== */
+
 @layer base {
   :root {
-    /* Academic Editorial — warm off-white + deep green */
-    --background: 40 20% 97%;
-    --foreground: 0 0% 7%;
+    /* ── Spacing — 4px base ── */
+    --space-0: 0px;
+    --space-1: 2px;
+    --space-2: 4px;
+    --space-3: 8px;
+    --space-4: 12px;
+    --space-5: 16px;
+    --space-6: 20px;
+    --space-7: 24px;
+    --space-8: 32px;
+    --space-9: 40px;
+    --space-10: 48px;
+    --space-12: 64px;
+    --space-16: 96px;
 
-    --card: 40 20% 98%;
-    --card-foreground: 0 0% 7%;
+    /* ── Radius ── */
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-2xl: 24px;
+    --radius-full: 999px;
+    --radius: 0.5rem; /* shadcn default - kept for compat */
 
-    --primary: 160 72% 14%;
-    --primary-foreground: 0 0% 98%;
+    /* ── Typography ── */
+    --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    /* --font-sans, --font-serif provided by next/font in layout.tsx */
 
-    --secondary: 40 15% 93%;
-    --secondary-foreground: 0 0% 20%;
+    /* Type scale */
+    --text-xs: 11px;
+    --text-sm: 12px;
+    --text-base: 13px;
+    --text-md: 14px;
+    --text-lg: 16px;
+    --text-xl: 19px;
+    --text-2xl: 24px;
+    --text-3xl: 30px;
+    --text-4xl: 38px;
+    --text-5xl: 48px;
+    --text-6xl: 64px;
 
-    --muted: 40 10% 92%;
-    --muted-foreground: 0 0% 42%;
+    /* ── Density (toggle via [data-density="compact"]) ── */
+    --density: 1;
+    --row-h: calc(36px * var(--density));
+    --control-h: calc(32px * var(--density));
+    --control-h-lg: calc(38px * var(--density));
 
-    --accent: 160 18% 91%;
-    --accent-foreground: 160 72% 14%;
-
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 40 12% 87%;
-    --input: 40 12% 87%;
-    --ring: 160 72% 14%;
-
-    --radius: 0.375rem;
+    /* ── Easing & duration ── */
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --dur-fast: 120ms;
+    --dur-base: 200ms;
+    --dur-slow: 320ms;
   }
 
-  .dark {
-    /* Academic dark — warm charcoal + soft green */
-    --background: 30 6% 10%;
-    --foreground: 40 18% 92%;
+  /* ──────────────────────────────────────────────
+     Light theme — warm-cool neutrals + violet accent
+     ────────────────────────────────────────────── */
+  :root,
+  [data-theme='light'],
+  html:not(.dark) {
+    /* Accent ramp */
+    --accent-50:  oklch(0.975 0.015 290);
+    --accent-100: oklch(0.945 0.04 290);
+    --accent-200: oklch(0.89 0.075 290);
+    --accent-300: oklch(0.82 0.12 290);
+    --accent-400: oklch(0.72 0.16 290);
+    --accent-500: oklch(0.64 0.19 290);
+    --accent-600: oklch(0.56 0.20 290);
+    --accent-700: oklch(0.48 0.18 290);
+    --accent-800: oklch(0.40 0.15 290);
+    --accent-900: oklch(0.30 0.10 290);
 
-    --card: 30 5% 13%;
-    --card-foreground: 40 18% 92%;
+    /* Surfaces */
+    --bg:           oklch(0.992 0.003 280);
+    --bg-subtle:    oklch(0.975 0.005 280);
+    --bg-muted:     oklch(0.955 0.007 280);
+    --surface:      #ffffff;
+    --surface-2:    oklch(0.985 0.004 280);
+    --surface-raised:#ffffff;
+    --overlay:      rgba(20, 18, 28, 0.45);
 
-    --primary: 160 48% 42%;
-    --primary-foreground: 0 0% 98%;
+    /* Borders */
+    --border-color:  oklch(0.92 0.008 280);
+    --border-strong: oklch(0.86 0.01 280);
+    --border-focus:  var(--accent-500);
 
-    --secondary: 30 5% 18%;
-    --secondary-foreground: 40 12% 80%;
+    /* Foreground */
+    --fg:           oklch(0.22 0.02 280);
+    --fg-muted:     oklch(0.45 0.012 280);
+    --fg-subtle:    oklch(0.62 0.01 280);
+    --fg-inverse:   #ffffff;
+    --fg-on-accent: #ffffff;
 
-    --muted: 30 5% 17%;
-    --muted-foreground: 40 8% 55%;
+    /* Semantic */
+    --success: oklch(0.62 0.16 155);
+    --warning: oklch(0.72 0.16 75);
+    --danger:  oklch(0.60 0.21 25);
+    --info:    oklch(0.62 0.15 235);
 
-    --accent: 160 15% 18%;
-    --accent-foreground: 160 48% 60%;
+    /* Shadows */
+    --shadow-xs: 0 1px 1px 0 rgba(15, 12, 30, 0.04);
+    --shadow-sm: 0 1px 2px 0 rgba(15, 12, 30, 0.06), 0 1px 1px 0 rgba(15, 12, 30, 0.03);
+    --shadow-md: 0 4px 12px -2px rgba(15, 12, 30, 0.08), 0 2px 4px -1px rgba(15, 12, 30, 0.04);
+    --shadow-lg: 0 16px 32px -8px rgba(15, 12, 30, 0.12), 0 4px 8px -2px rgba(15, 12, 30, 0.06);
+    --shadow-xl: 0 32px 64px -16px rgba(15, 12, 30, 0.18);
+    --shadow-glow: 0 0 0 4px oklch(0.64 0.19 290 / 0.15);
 
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 0 0% 98%;
+    --grid-line: oklch(0.93 0.005 280);
 
-    --border: 30 5% 20%;
-    --input: 30 5% 20%;
-    --ring: 160 48% 42%;
+    /* ── shadcn/ui compat layer (HSL-shaped strings) ──
+       These mirror the OKLCH semantics so existing components keep working.
+       Format: "H S% L%". */
+    --background: 280 100% 99%;
+    --foreground: 280 8% 18%;
+    --card: 0 0% 100%;
+    --card-foreground: 280 8% 18%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 280 8% 18%;
+    --primary: 270 65% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 280 8% 95%;
+    --secondary-foreground: 280 8% 25%;
+    --muted: 280 6% 93%;
+    --muted-foreground: 280 4% 45%;
+    --accent: 280 30% 92%;
+    --accent-foreground: 270 60% 35%;
+    --destructive: 12 80% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 280 8% 88%;
+    --input: 280 8% 88%;
+    --ring: 270 65% 55%;
+  }
+
+  /* ──────────────────────────────────────────────
+     Dark theme — same hue, inverted lightness
+     ────────────────────────────────────────────── */
+  [data-theme='dark'],
+  html.dark {
+    --accent-50:  oklch(0.30 0.08 290);
+    --accent-100: oklch(0.36 0.10 290);
+    --accent-200: oklch(0.44 0.13 290);
+    --accent-300: oklch(0.52 0.16 290);
+    --accent-400: oklch(0.60 0.18 290);
+    --accent-500: oklch(0.70 0.18 290);
+    --accent-600: oklch(0.78 0.16 290);
+    --accent-700: oklch(0.85 0.13 290);
+    --accent-800: oklch(0.91 0.08 290);
+    --accent-900: oklch(0.96 0.04 290);
+
+    --bg:           oklch(0.14 0.012 280);
+    --bg-subtle:    oklch(0.16 0.014 280);
+    --bg-muted:     oklch(0.19 0.014 280);
+    --surface:      oklch(0.18 0.014 280);
+    --surface-2:    oklch(0.21 0.014 280);
+    --surface-raised:oklch(0.22 0.016 280);
+    --overlay:      rgba(8, 6, 14, 0.65);
+
+    --border-color:  oklch(0.27 0.012 280);
+    --border-strong: oklch(0.34 0.014 280);
+    --border-focus:  var(--accent-500);
+
+    --fg:           oklch(0.96 0.005 280);
+    --fg-muted:     oklch(0.72 0.008 280);
+    --fg-subtle:    oklch(0.55 0.008 280);
+    --fg-inverse:   oklch(0.18 0.014 280);
+    --fg-on-accent: oklch(0.14 0.012 280);
+
+    --success: oklch(0.74 0.16 155);
+    --warning: oklch(0.82 0.15 75);
+    --danger:  oklch(0.72 0.18 25);
+    --info:    oklch(0.74 0.14 235);
+
+    --shadow-xs: 0 1px 1px 0 rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4), 0 1px 1px 0 rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 4px 8px -2px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 32px 64px -16px rgba(0, 0, 0, 0.7);
+    --shadow-glow: 0 0 0 4px oklch(0.70 0.18 290 / 0.25);
+
+    --grid-line: oklch(0.22 0.012 280);
+
+    /* shadcn compat (dark) */
+    --background: 280 8% 10%;
+    --foreground: 280 6% 96%;
+    --card: 280 8% 14%;
+    --card-foreground: 280 6% 96%;
+    --popover: 280 8% 14%;
+    --popover-foreground: 280 6% 96%;
+    --primary: 270 65% 70%;
+    --primary-foreground: 280 8% 12%;
+    --secondary: 280 6% 20%;
+    --secondary-foreground: 280 6% 90%;
+    --muted: 280 6% 18%;
+    --muted-foreground: 280 4% 65%;
+    --accent: 280 20% 25%;
+    --accent-foreground: 270 60% 80%;
+    --destructive: 12 80% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 280 6% 22%;
+    --input: 280 6% 22%;
+    --ring: 270 65% 65%;
+  }
+
+  /* Density override */
+  [data-density='compact'] {
+    --density: 0.85;
+  }
+  [data-density='comfortable'] {
+    --density: 1.1;
   }
 }
+
+/* ==========================================================================
+   Base styles
+   ========================================================================== */
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; font-feature-settings: "rlig" 1, "calt" 1; }
-  h1, h2, h3 { font-family: var(--font-serif); }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body { margin: 0; padding: 0; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-size: var(--text-md);
+    line-height: 1.5;
+    color: var(--fg);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'ss01', 'cv11';
+    transition: background var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+  }
+  button { font-family: inherit; }
+
+  ::selection { background: var(--accent-200); color: var(--fg); }
+  html.dark ::selection { background: var(--accent-400); color: var(--fg-on-accent); }
+
+  /* Display headings — Instrument Serif italic with em-accent */
+  .h-display {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: var(--text-5xl);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    margin: 0;
+  }
+  .h-display em {
+    font-style: italic;
+    color: var(--accent-600);
+  }
+
+  .h-section {
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin: 0;
+  }
+
+  .h-sub {
+    font-size: var(--text-lg);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+
+  .lede {
+    font-size: var(--text-lg);
+    color: var(--fg-muted);
+    line-height: 1.55;
+    max-width: 64ch;
+    margin: 0;
+  }
+
+  /* Eyebrow — moo-mono uppercase label */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--fg-subtle);
+  }
+
+  /* Keyboard shortcut hint */
+  .kbd {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 5px;
+    border: 1px solid var(--border-strong);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--fg-muted);
+    line-height: 1;
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0ms !important;
+      transition-duration: 0ms !important;
+    }
+  }
 }
 
-/* Framer Motion handles page transitions — no CSS fade-up needed */
+/* ==========================================================================
+   AI patterns runtime CSS
+   ========================================================================== */
+
+.ai-caret {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: var(--accent-600);
+  margin-left: 2px;
+  vertical-align: middle;
+  border-radius: 1px;
+  animation: ai-blink 0.9s infinite;
+}
+@keyframes ai-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+@keyframes ai-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.7); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+.ai-spin {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  animation: ds-spin 0.7s linear infinite;
+}
+
+@keyframes ds-spin {
+  to { transform: rotate(360deg); }
+}
+
+.ai-shimmer {
+  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--accent-500), transparent 70%), transparent);
+  background-size: 200% 100%;
+  animation: ai-shimmer 1.8s infinite;
+}
+@keyframes ai-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { scrollbar-width: none; }

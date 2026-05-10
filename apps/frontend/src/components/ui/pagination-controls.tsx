@@ -30,19 +30,25 @@ export function PaginationControls({
   const hasNext = hasNextProp !== undefined ? hasNextProp : itemsCount >= (pageSize ?? itemsCount + 1);
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-card/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">{t.common.page} {page}</span>
-        <span className="ml-2">{itemsCount} {t.common.resultsOnPage}</span>
+    <div className="flex flex-col gap-3 rounded-ds-lg border border-[var(--border-color)] bg-[var(--bg-subtle)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-2 text-[12px] text-[var(--fg-muted)]">
+        <span className="font-mono uppercase tracking-[0.08em] text-[10px] text-[var(--fg-subtle)]">
+          {t.common.page}
+        </span>
+        <span className="font-mono tabular-nums text-[var(--fg)]">{page}</span>
+        <span className="text-[var(--fg-subtle)]">·</span>
+        <span className="font-mono tabular-nums text-[var(--fg-muted)]">
+          {itemsCount} {t.common.resultsOnPage}
+        </span>
       </div>
-      <div className="flex items-center gap-2">
-        <Button size="sm" variant="outline" onClick={onPrevious} disabled={!hasPrevious || isLoading} className="gap-1.5">
-          <ChevronLeft className="h-4 w-4" />
+      <div className="flex items-center gap-1.5">
+        <Button size="sm" variant="secondary" onClick={onPrevious} disabled={!hasPrevious || isLoading}>
+          <ChevronLeft className="h-3.5 w-3.5" />
           {t.common.previous}
         </Button>
-        <Button size="sm" variant="outline" onClick={onNext} disabled={!hasNext || isLoading} className="gap-1.5">
+        <Button size="sm" variant="secondary" onClick={onNext} disabled={!hasNext || isLoading}>
           {t.common.next}
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-3.5 w-3.5" />
         </Button>
       </div>
     </div>
