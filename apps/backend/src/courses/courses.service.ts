@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateCourseDto, UpdateCourseDto } from './courses.dto';
 import { Role } from '@prisma/client';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { toPaginatedResult } from '../common/pagination';
 
 @Injectable()
 export class CoursesService {
@@ -12,20 +13,29 @@ export class CoursesService {
   ) {}
 
   async findAll(user: { id: string; role: Role }, page = 1, limit = 20) {
-    if (user.role === Role.ADMIN)
-      return this.db.course.findMany({
-        include: { teacher: { select: { id: true, fullName: true } }, _count: { select: { enrollments: true, assignments: true } } },
-        orderBy: { title: 'asc' },
+    if (user.role === Role.ADMIN) {
+      const [items, total] = await this.db.$transaction([
+        this.db.course.findMany({
+          include: { teacher: { select: { id: true, fullName: true } }, _count: { select: { enrollments: true, assignments: true } } },
+          orderBy: { title: 'asc' },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        this.db.course.count(),
+      ]);
+      return toPaginatedResult(items, page, limit, total);
+    }
+    const [enrs, total] = await this.db.$transaction([
+      this.db.enrollment.findMany({
+        where: { userId: user.id },
+        include: { course: { include: { teacher: { select: { id: true, fullName: true } }, _count: { select: { enrollments: true, assignments: true } } } } },
         skip: (page - 1) * limit,
         take: limit,
-      });
-    const enrs = await this.db.enrollment.findMany({
-      where: { userId: user.id },
-      include: { course: { include: { teacher: { select: { id: true, fullName: true } }, _count: { select: { enrollments: true, assignments: true } } } } },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
-    return enrs.map(e => ({ ...e.course, roleInCourse: e.roleInCourse }));
+      }),
+      this.db.enrollment.count({ where: { userId: user.id } }),
+    ]);
+    const items = enrs.map(e => ({ ...e.course, roleInCourse: e.roleInCourse }));
+    return toPaginatedResult(items, page, limit, total);
   }
 
   async findOne(id: string, user: { id: string; role: Role }) {
