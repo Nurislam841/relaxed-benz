@@ -29,7 +29,14 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-serif text-3xl font-semibold">{t.admin.title}</h1>
+      <div className="space-y-1.5">
+        <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">
+          Platform analytics
+        </span>
+        <h1 className="font-serif text-[36px] tracking-[-0.015em] leading-[1.05] text-[var(--fg)]">
+          {t.admin.title}
+        </h1>
+      </div>
 
       {isError && (
         <div className="flex items-center gap-3 rounded-lg border border-rose-200 bg-rose-50 dark:border-rose-500/30 dark:bg-rose-500/[0.08] px-4 py-3">

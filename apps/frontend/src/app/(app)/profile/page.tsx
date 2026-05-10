@@ -10,8 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/form-elements';
-import { KeyRound, Mail, ShieldCheck, UserCircle2, Users } from 'lucide-react';
+import { KeyRound, Mail, ShieldCheck, UserCircle2, Users, Sliders } from 'lucide-react';
 import type { User } from '@/lib/types';
+import { DensityToggle } from '@/components/ds/density-toggle';
 
 const roleVariant = {
   ADMIN: 'destructive',
@@ -93,9 +94,14 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-4xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">{t.profile.title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t.profile.subtitle}</p>
+      <div className="space-y-1.5">
+        <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">
+          Account
+        </span>
+        <h1 className="font-serif text-[36px] tracking-[-0.015em] leading-[1.05] text-[var(--fg)]">
+          {t.profile.title}
+        </h1>
+        <p className="text-[13px] text-[var(--fg-muted)]">{t.profile.subtitle}</p>
       </div>
 
       <Card className="overflow-hidden">
@@ -200,16 +206,31 @@ export default function ProfilePage() {
             </div>
 
             <Button
-              className="w-full gap-2"
+              variant="primary"
+              className="w-full"
               onClick={submitPassword}
               disabled={!currentPassword || !newPassword || !confirmPassword || changePassword.isPending}
             >
-              <KeyRound className="h-4 w-4" />
+              <KeyRound className="h-3.5 w-3.5" />
               {changePassword.isPending ? t.profile.saving : t.profile.changePassword}
             </Button>
           </CardContent>
         </Card>
       </div>
+
+      {/* Display preferences */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sliders className="h-4 w-4" />
+            Display
+          </CardTitle>
+          <CardDescription>UI density — affects padding, row heights, and control sizes</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DensityToggle />
+        </CardContent>
+      </Card>
     </div>
   );
 }

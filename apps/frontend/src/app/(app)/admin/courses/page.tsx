@@ -101,11 +101,14 @@ export default function AdminCoursesPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">{t.adminCrud.coursesTitle}</h1>
-        <Button onClick={openCreate} className="gap-2">
-          <Plus className="h-4 w-4" />
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+          <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">Courses</span>
+          <h1 className="font-serif text-[32px] tracking-[-0.015em] leading-[1.05] text-[var(--fg)]">{t.adminCrud.coursesTitle}</h1>
+        </div>
+        <Button variant="primary" onClick={openCreate}>
+          <Plus className="h-3.5 w-3.5" />
           {t.adminCrud.coursesAdd}
         </Button>
       </div>

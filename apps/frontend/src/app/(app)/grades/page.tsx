@@ -101,9 +101,16 @@ export default function GradesPage() {
   return (
     <div className="space-y-6 mt-1">
       {/* Header */}
-      <div>
-        <h1 className="font-serif text-2xl font-semibold">{t.grades.myGrades}</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Your academic performance across all enrolled courses</p>
+      <div className="space-y-1.5">
+        <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">
+          Academic record
+        </span>
+        <h1 className="font-serif text-[36px] tracking-[-0.015em] leading-[1.05] text-[var(--fg)]">
+          {t.grades.myGrades}
+        </h1>
+        <p className="text-[14px] text-[var(--fg-muted)]">
+          Your academic performance across all enrolled courses
+        </p>
       </div>
 
       {/* Overall summary strip */}

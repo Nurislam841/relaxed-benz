@@ -111,11 +111,12 @@ export default function SchedulePage() {
   const isToday = (date: Date) => date.toDateString() === new Date().toDateString();
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t.schedule.title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t.schedule.thisWeek}: {weekLabel}</p>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-1">
+          <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">Weekly schedule</span>
+          <h1 className="font-serif text-[36px] tracking-[-0.015em] leading-[1.05] text-[var(--fg)]">{t.schedule.title}</h1>
+          <p className="text-[13px] text-[var(--fg-muted)] font-mono">{t.schedule.thisWeek}: {weekLabel}</p>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">

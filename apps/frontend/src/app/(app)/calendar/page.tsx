@@ -81,11 +81,12 @@ export default function CalendarPage() {
   const hasAnyEvents = (data?.scheduleItems?.length || 0) + (data?.assignments?.length || 0) > 0;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-serif text-2xl font-semibold">{t.calendar.title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{monthLabel}</p>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+          <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">Calendar</span>
+          <h1 className="font-serif text-[36px] tracking-[-0.015em] leading-[1.05] text-[var(--fg)]">{t.calendar.title}</h1>
+          <p className="text-[13px] text-[var(--fg-muted)] font-mono">{monthLabel}</p>
         </div>
 
         <div className="flex items-center gap-2">

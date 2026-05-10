@@ -8,6 +8,8 @@ import { Bell, CheckCheck } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Skeleton } from '@/components/ui/form-elements';
+import { Eyebrow } from '@/components/ds/eyebrow';
+import { HDisplay } from '@/components/ds/h-display';
 import { useT } from '@/lib/i18n';
 import { getNotificationContent } from '@/lib/notification-content';
 
@@ -41,22 +43,24 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-serif text-3xl font-semibold">{t.notifications.title}</h1>
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div className="space-y-1.5">
+          <Eyebrow>Inbox</Eyebrow>
+          <HDisplay size="md" as="h1">{t.notifications.title}</HDisplay>
           {unread > 0 && (
-            <p className="text-sm text-muted-foreground mt-1">{unread} {t.notifications.unread}</p>
+            <p className="text-[13px] text-[var(--fg-muted)] font-mono">
+              {unread} {t.notifications.unread}
+            </p>
           )}
         </div>
         {unread > 0 && (
           <Button
-            variant="outline"
-            size="sm"
-            className="gap-2"
+            variant="secondary"
+            size="md"
             onClick={() => readAllMutation.mutate()}
             disabled={readAllMutation.isPending}
           >
-            <CheckCheck className="h-4 w-4" />
+            <CheckCheck className="h-3.5 w-3.5" />
             {t.notifications.markAll}
           </Button>
         )}
@@ -102,18 +106,23 @@ export default function NotificationsPage() {
                   transition={{ duration: 0.2 }}
                 >
                   <Card
-                    className={n.isRead ? 'opacity-55 hover:-translate-y-0.5 hover:opacity-70' : 'border-primary/20 bg-accent/40 hover:-translate-y-0.5'}
+                    hoverable
+                    className={n.isRead ? 'opacity-60' : 'border-[var(--accent-200)] bg-[var(--accent-50)]'}
                     onClick={() => !n.isRead && readOneMutation.mutate(n.id)}
                   >
                     <CardContent className="p-4 flex items-start gap-3 cursor-pointer">
                       <div
                         className="mt-1.5 h-2 w-2 rounded-full shrink-0"
-                        style={{ background: n.isRead ? 'transparent' : 'hsl(var(--primary))' }}
+                        style={{ background: n.isRead ? 'transparent' : 'var(--accent-500)' }}
                       />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">{content.title}</p>
-                        {content.body && <p className="text-xs text-muted-foreground mt-0.5">{content.body}</p>}
-                        <p className="text-xs text-muted-foreground mt-1.5">{formatDateTime(n.createdAt)}</p>
+                        <p className="text-[13px] font-medium text-[var(--fg)]">{content.title}</p>
+                        {content.body && (
+                          <p className="text-[12px] text-[var(--fg-muted)] mt-0.5">{content.body}</p>
+                        )}
+                        <p className="text-[11px] text-[var(--fg-subtle)] font-mono mt-1.5">
+                          {formatDateTime(n.createdAt)}
+                        </p>
                       </div>
                     </CardContent>
                   </Card>

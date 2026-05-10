@@ -38,9 +38,14 @@ export default function SearchPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="font-serif text-3xl font-semibold">{t.search.title}</h1>
+    <div className="space-y-6 max-w-3xl">
+      <div className="space-y-1.5">
+        <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">
+          Global search
+        </span>
+        <h1 className="font-serif text-[36px] tracking-[-0.015em] leading-[1.05] text-[var(--fg)]">
+          {t.search.title}
+        </h1>
       </div>
 
       <div className="relative">

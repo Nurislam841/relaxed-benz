@@ -12,3 +12,4 @@ export { Alert } from './alert';
 export { DsAvatar } from './avatar';
 export { DsTabs } from './tabs';
 export { Kbd } from './kbd';
+export { DensityToggle } from './density-toggle';

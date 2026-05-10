@@ -238,15 +238,15 @@ export default function ActivityPage() {
     <div className="space-y-6 max-w-2xl">
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <div className="flex items-center gap-2.5 mb-1">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 dark:bg-primary/15 flex items-center justify-center">
-              <Activity className="h-4 w-4 text-primary" />
-            </div>
-            <h1 className="font-serif text-2xl font-semibold">{t.activity.title}</h1>
-          </div>
-          <p className="text-sm text-muted-foreground ml-10.5">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        <div className="space-y-1.5">
+          <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">
+            Audit timeline
+          </span>
+          <h1 className="font-serif text-[36px] tracking-[-0.015em] leading-[1.05] text-[var(--fg)]">
+            {t.activity.title}
+          </h1>
+          <p className="text-[13px] text-[var(--fg-muted)] max-w-[60ch]">
             {isAdmin ? t.activity.adminSubtitle : t.activity.userSubtitle}
           </p>
         </div>
