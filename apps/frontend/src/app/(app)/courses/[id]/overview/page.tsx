@@ -1,6 +1,9 @@
 'use client';
+
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Send, MessageSquare, Sparkles, BookOpen, Lightbulb, RotateCcw } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Announcement, Course, AiCourseSummary } from '@/lib/types';
 import { useMe } from '@/hooks/use-auth';
@@ -9,11 +12,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea, Skeleton } from '@/components/ui/form-elements';
 import { Badge } from '@/components/ui/badge';
+import { Eyebrow } from '@/components/ds/eyebrow';
+import { ThinkingDots } from '@/components/ai/thinking';
 import { toast } from '@/hooks/use-toast';
 import { formatDateTime } from '@/lib/utils';
-import { useState } from 'react';
-import { Send, MessageSquare, Sparkles, BookOpen, Lightbulb, BarChart3, FlaskConical } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { useLanguage, useT } from '@/lib/i18n';
 import { getAnnouncementContent } from '@/lib/announcement-content';
 
@@ -41,23 +43,34 @@ export default function OverviewPage() {
   });
 
   const post = useMutation({
-    mutationFn: (d: { title: string; body: string }) => api.post(`/courses/${id}/announcements`, d),
+    mutationFn: (d: { title: string; body: string }) =>
+      api.post(`/courses/${id}/announcements`, d),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['c-anns', id] });
       toast({ title: t.courseOverview.posted });
-      setTitle(''); setBody(''); setShow(false);
+      setTitle('');
+      setBody('');
+      setShow(false);
     },
-    onError: (e: any) => toast({ title: t.common.error, description: e.message, variant: 'destructive' }),
+    onError: (e: any) =>
+      toast({ title: t.common.error, description: e.message, variant: 'destructive' }),
   });
 
   const handleSummary = async () => {
     setSummaryLoading(true);
     setSummary(null);
     try {
-      const result = await api.post<AiCourseSummary>('/ai/course-summary', { courseId: id, lang });
+      const result = await api.post<AiCourseSummary>('/ai/course-summary', {
+        courseId: id,
+        lang,
+      });
       setSummary(result);
     } catch (e: any) {
-      toast({ title: t.courseOverview.aiUnavailable, description: e.message, variant: 'destructive' });
+      toast({
+        title: t.courseOverview.aiUnavailable,
+        description: e.message,
+        variant: 'destructive',
+      });
     } finally {
       setSummaryLoading(false);
     }
@@ -65,10 +78,10 @@ export default function OverviewPage() {
 
   const canPost = user?.role === 'ADMIN' || user?.role === 'TEACHER';
 
-  const workloadColor = {
-    light: 'bg-green-100 text-green-800 dark:bg-green-500/[0.15] dark:text-green-300',
-    moderate: 'bg-yellow-100 text-yellow-800 dark:bg-amber-500/[0.15] dark:text-amber-300',
-    heavy: 'bg-red-100 text-red-800 dark:bg-red-500/[0.15] dark:text-red-300',
+  const workloadTone = {
+    light: 'success' as const,
+    moderate: 'warning' as const,
+    heavy: 'danger' as const,
   };
   const workloadLabel = {
     light: t.courseOverview.workloadLight,
@@ -77,70 +90,98 @@ export default function OverviewPage() {
   };
 
   return (
-    <div className="space-y-4 mt-4">
+    <div className="space-y-5 mt-4">
       {/* Course info card */}
-      <Card>
-        <CardContent className="pt-6">
-          <p className="text-sm">{course?.description || t.courseOverview.noDescription}</p>
-          {(course as any)?._count?.enrollments != null && (
-            <div className="mt-4 text-sm text-muted-foreground">
-              <span>{(course as any)._count.enrollments} {t.courseOverview.enrolled}</span>
-            </div>
-          )}
-        </CardContent>
+      <Card padding="lg">
+        <p className="text-[14px] text-[var(--fg)] leading-[1.6]">
+          {course?.description || t.courseOverview.noDescription}
+        </p>
+        {(course as any)?._count?.enrollments != null && (
+          <div className="mt-4 text-[12px] font-mono text-[var(--fg-muted)]">
+            {(course as any)._count.enrollments} {t.courseOverview.enrolled}
+          </div>
+        )}
       </Card>
 
       {/* AI Course Summary */}
       <div>
         {!summary && !summaryLoading && (
-          <Button
-            variant="outline"
-            onClick={handleSummary}
-            className="gap-2 border-purple-200 text-purple-700 hover:bg-purple-50 dark:border-purple-500/30 dark:text-purple-300 dark:hover:bg-purple-500/[0.1]"
-          >
-            <Sparkles className="h-4 w-4" />
+          <Button variant="ai" size="md" onClick={handleSummary}>
+            <Sparkles className="h-3.5 w-3.5" />
             {t.courseOverview.aiSummary}
           </Button>
         )}
 
         {summaryLoading && (
-          <Card className="border-purple-100 dark:border-purple-500/20">
-            <CardContent className="pt-5 space-y-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <div className="h-4 w-4 rounded-full border-2 border-purple-400 dark:border-purple-400/70 border-t-transparent animate-spin" />
-                {t.courseOverview.generatingSummary}
-              </div>
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-4 w-full" />)}
-            </CardContent>
+          <Card
+            padding="lg"
+            className="border-[var(--accent-200)]"
+            style={{
+              background:
+                'linear-gradient(180deg, var(--accent-50), var(--surface))',
+            }}
+          >
+            <div className="space-y-3">
+              <ThinkingDots label={t.courseOverview.generatingSummary} />
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-3 w-full" />)}
+            </div>
           </Card>
         )}
 
         {summary && (
-          <Card className="border-purple-100 bg-purple-50/30 dark:border-purple-500/20 dark:bg-purple-500/[0.06]">
-            <CardContent className="pt-5 space-y-4">
+          <Card
+            padding="lg"
+            className="relative overflow-hidden border-[var(--accent-200)]"
+            style={{
+              background: 'linear-gradient(180deg, var(--accent-50), var(--surface))',
+            }}
+          >
+            {/* glow */}
+            <span
+              aria-hidden
+              className="absolute -top-5 -right-5 w-[160px] h-[160px] rounded-full pointer-events-none opacity-50"
+              style={{
+                background:
+                  'radial-gradient(circle, var(--accent-200), transparent 60%)',
+              }}
+            />
+            <div className="relative space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm flex items-center gap-2 text-purple-800 dark:text-purple-300">
-                  <Sparkles className="h-4 w-4" />
-                  {t.courseOverview.aiSummary}
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-6 h-6 rounded-[7px] flex items-center justify-center text-white"
+                    style={{
+                      background:
+                        'linear-gradient(135deg, var(--accent-500), var(--accent-700))',
+                    }}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                  </div>
+                  <span className="text-[13px] font-semibold text-[var(--fg)]">
+                    {t.courseOverview.aiSummary}
+                  </span>
                   {(summary as any)._demo && (
-                    <Badge variant="outline" className="text-xs font-normal border-purple-200 text-purple-600 dark:border-purple-500/30 dark:text-purple-400">{t.courseOverview.demo}</Badge>
+                    <Badge tone="accent" variant="soft">{t.courseOverview.demo}</Badge>
                   )}
-                </h3>
-                <Badge className={cn('text-xs capitalize', workloadColor[summary.workload] ?? 'bg-gray-100 text-gray-700')}>
+                </div>
+                <Badge tone={workloadTone[summary.workload] ?? 'neutral'}>
                   {workloadLabel[summary.workload] ?? summary.workload}
                 </Badge>
               </div>
 
-              <p className="text-sm text-muted-foreground">{summary.summary}</p>
+              <p className="text-[13px] text-[var(--fg)] leading-[1.6]">{summary.summary}</p>
 
               {summary.keyTopics.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium flex items-center gap-1.5 mb-1.5 text-foreground">
-                    <BookOpen className="h-3.5 w-3.5" /> {t.courseOverview.keyTopics}
-                  </p>
+                  <Eyebrow className="flex items-center gap-1.5 mb-1.5">
+                    <BookOpen className="h-3 w-3" />
+                    {t.courseOverview.keyTopics}
+                  </Eyebrow>
                   <div className="flex flex-wrap gap-1.5">
-                    {summary.keyTopics.map((t, i) => (
-                      <Badge key={i} variant="secondary" className="text-xs">{t}</Badge>
+                    {summary.keyTopics.map((tt, i) => (
+                      <Badge key={i} tone="neutral" variant="soft">
+                        {tt}
+                      </Badge>
                     ))}
                   </div>
                 </div>
@@ -148,97 +189,125 @@ export default function OverviewPage() {
 
               {summary.tips.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium flex items-center gap-1.5 mb-1.5 text-foreground">
-                    <Lightbulb className="h-3.5 w-3.5" /> {t.courseOverview.studyTips}
-                  </p>
+                  <Eyebrow className="flex items-center gap-1.5 mb-1.5">
+                    <Lightbulb className="h-3 w-3" />
+                    {t.courseOverview.studyTips}
+                  </Eyebrow>
                   <ul className="space-y-1">
                     {summary.tips.map((tip, i) => (
-                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                        <span className="text-purple-400 mt-0.5">•</span>{tip}
+                      <li
+                        key={i}
+                        className="text-[12.5px] text-[var(--fg-muted)] flex items-start gap-1.5 leading-[1.55]"
+                      >
+                        <span className="text-[var(--accent-500)] mt-0.5">•</span>
+                        {tip}
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSummary}
-                className="text-xs text-muted-foreground h-auto py-1 px-2"
-              >
-                <FlaskConical className="h-3 w-3 mr-1" /> {t.courseOverview.regenerate}
+              <Button variant="ghost" size="sm" onClick={handleSummary}>
+                <RotateCcw className="h-3 w-3" />
+                {t.courseOverview.regenerate}
               </Button>
-            </CardContent>
+            </div>
           </Card>
         )}
       </div>
 
       {/* Post announcement */}
-      {canPost && (
-        !show
-          ? <Button variant="outline" onClick={() => setShow(true)} className="gap-2">
-              <MessageSquare className="h-4 w-4" /> {t.courseOverview.postAnnouncement}
-            </Button>
-          : <Card>
-              <CardContent className="pt-6 space-y-3">
-                <Input placeholder={t.courseOverview.titlePlaceholder} value={title} onChange={e => setTitle(e.target.value)} />
-                <Textarea placeholder={t.courseOverview.bodyPlaceholder} value={body} onChange={e => setBody(e.target.value)} rows={3} />
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" onClick={() => setShow(false)}>{t.common.cancel}</Button>
-                  <Button onClick={() => post.mutate({ title, body })} disabled={!title || !body} className="gap-2">
-                    <Send className="h-4 w-4" /> {t.common.post}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-      )}
+      {canPost &&
+        (!show ? (
+          <Button variant="secondary" size="md" onClick={() => setShow(true)}>
+            <MessageSquare className="h-3.5 w-3.5" />
+            {t.courseOverview.postAnnouncement}
+          </Button>
+        ) : (
+          <Card padding="lg">
+            <div className="space-y-3">
+              <Input
+                placeholder={t.courseOverview.titlePlaceholder}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+              <Textarea
+                placeholder={t.courseOverview.bodyPlaceholder}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={3}
+              />
+              <div className="flex gap-2 justify-end">
+                <Button variant="ghost" onClick={() => setShow(false)}>
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => post.mutate({ title, body })}
+                  disabled={!title || !body}
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  {t.common.post}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ))}
 
       {/* Announcements stream */}
-      <h2 className="text-lg font-semibold">{t.courseOverview.streamTitle}</h2>
-      {isLoading
-        ? <div className="space-y-3">{[1, 2].map(i => <Skeleton key={i} className="h-24 w-full" />)}</div>
-        : !anns?.length
-          ? (
-            <div className="flex flex-col items-center py-12 text-center gap-3">
-              <div className="h-12 w-12 rounded-2xl bg-muted dark:bg-white/[0.04] flex items-center justify-center">
-                <MessageSquare className="h-6 w-6 text-muted-foreground/30" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground/70">{t.courseOverview.noAnnouncements}</p>
-                <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                  {canPost
-                    ? 'Post the first update to keep your students informed.'
-                    : 'Your instructor hasn\'t posted any updates yet. Check back later.'}
-                </p>
-              </div>
-              {canPost && (
-                <button
-                  onClick={() => setShow(true)}
-                  className="text-xs text-primary hover:underline mt-1"
-                >
-                  Post the first announcement →
-                </button>
-              )}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center gap-2">
+          <Eyebrow>{t.courseOverview.streamTitle}</Eyebrow>
+        </div>
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
+          </div>
+        ) : !anns?.length ? (
+          <Card className="flex flex-col items-center py-12 text-center gap-3 border-dashed">
+            <div className="h-11 w-11 rounded-[12px] bg-[var(--bg-muted)] flex items-center justify-center">
+              <MessageSquare className="h-5 w-5 text-[var(--fg-subtle)]" />
             </div>
-          )
-          : <div className="space-y-3">
-              {anns.map(a => (
-                (() => {
-                  const content = getAnnouncementContent(a, lang);
-                  return (
-                    <Card key={a.id}>
-                      <CardContent className="pt-4">
-                        <h3 className="font-semibold">{content.title}</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">{(a as any).author?.fullName} &middot; {formatDateTime(a.createdAt)}</p>
-                        <p className="text-sm mt-2 text-muted-foreground whitespace-pre-wrap">{content.body}</p>
-                      </CardContent>
-                    </Card>
-                  );
-                })()
-              ))}
+            <div className="space-y-1">
+              <p className="text-[13px] font-medium text-[var(--fg)]">
+                {t.courseOverview.noAnnouncements}
+              </p>
+              <p className="text-[12px] text-[var(--fg-muted)] max-w-xs">
+                {canPost
+                  ? 'Post the first update to keep your students informed.'
+                  : "Your instructor hasn't posted any updates yet."}
+              </p>
             </div>
-      }
+            {canPost && (
+              <button
+                onClick={() => setShow(true)}
+                className="text-[12px] text-[var(--accent-700)] hover:underline mt-1"
+              >
+                Post the first announcement →
+              </button>
+            )}
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {anns.map((a) => {
+              const content = getAnnouncementContent(a, lang);
+              return (
+                <Card key={a.id} padding="md" hoverable>
+                  <h3 className="text-[14px] font-semibold text-[var(--fg)]">
+                    {content.title}
+                  </h3>
+                  <p className="text-[11px] text-[var(--fg-muted)] font-mono mt-0.5">
+                    {(a as any).author?.fullName} · {formatDateTime(a.createdAt)}
+                  </p>
+                  <p className="text-[13px] mt-2 text-[var(--fg-muted)] whitespace-pre-wrap leading-[1.55]">
+                    {content.body}
+                  </p>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

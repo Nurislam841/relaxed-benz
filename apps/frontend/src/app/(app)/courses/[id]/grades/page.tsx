@@ -36,8 +36,8 @@ function StudentGrades({ courseId }: { courseId: string }) {
   if (isLoading) return <div className="space-y-3">{[1,2,3].map(i=><div key={i} className="h-16 bg-muted animate-pulse rounded-lg"/>)}</div>;
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-lg font-semibold">{t.grades.myGrades}</h2>
+    <div className="space-y-6 mt-4">
+      <h2 className="text-[20px] font-semibold tracking-[-0.01em] text-[var(--fg)]">{t.grades.myGrades}</h2>
 
       {courseSummary && (
         <Card className="border-primary/20 bg-primary/5 dark:bg-primary/[0.07]">
@@ -240,9 +240,9 @@ function TeacherGrades({ courseId }: { courseId: string }) {
     : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 mt-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-lg font-semibold">{t.courseGrades.gradebook}</h2>
+        <h2 className="text-[20px] font-semibold tracking-[-0.01em] text-[var(--fg)]">{t.courseGrades.gradebook}</h2>
         <Button size="sm" variant="outline" onClick={exportCsv} disabled={exporting} className="gap-2">
           <Download className="h-4 w-4" />{t.common.export}
         </Button>

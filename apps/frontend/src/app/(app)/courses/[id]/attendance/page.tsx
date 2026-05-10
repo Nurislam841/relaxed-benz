@@ -171,9 +171,9 @@ export default function AttendancePage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 mt-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-lg font-semibold">{t.attendance.title}</h2>
+        <h2 className="text-[20px] font-semibold tracking-[-0.01em] text-[var(--fg)]">{t.attendance.title}</h2>
         <div className="flex flex-wrap gap-1">
           {canMark && (
             <Button size="sm" variant="outline" onClick={exportCsv} className="gap-2">
