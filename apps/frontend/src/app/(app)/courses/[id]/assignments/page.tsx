@@ -24,6 +24,7 @@ import {
 import { useLanguage, useT } from '@/lib/i18n';
 import { motion, type Variants } from 'framer-motion';
 import { useInView } from 'framer-motion';
+import { Segment } from '@/components/ds/segment';
 
 // ─── Status + urgency ─────────────────────────────────────────────────────────
 
@@ -1073,7 +1074,12 @@ export default function AssignmentsPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="font-serif text-lg font-semibold text-foreground">{t.courseAssignments.title}</h2>
+          <span className="font-mono text-[10px] uppercase tracking-[0.10em] text-[var(--fg-subtle)] block">
+            Assignments
+          </span>
+          <h2 className="text-[20px] font-semibold tracking-[-0.01em] text-[var(--fg)] mt-0.5">
+            {t.courseAssignments.title}
+          </h2>
           {isStu && statusCounts && assignments.length > 0 && (
             <p className="text-xs text-muted-foreground mt-0.5">
               {statusCounts.pending > 0 && <span className="text-emerald-600 dark:text-emerald-400 font-medium">{statusCounts.pending} open</span>}
@@ -1088,53 +1094,23 @@ export default function AssignmentsPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* View toggle */}
+          {/* View toggle — DS Segment */}
           {assignments.length > 0 && (
-            <div className="flex items-center rounded-md border border-border/50 dark:border-white/[0.08] overflow-hidden text-xs">
-              <button
-                onClick={() => setViewMode('cards')}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1.5 font-medium transition-all duration-150',
-                  viewMode === 'cards'
-                    ? 'bg-primary/[0.08] text-primary dark:bg-primary/[0.12]'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/40 dark:hover:bg-white/[0.04]',
-                )}
-              >
-                <List className="h-3.5 w-3.5" />
-                Cards
-              </button>
-              <div className="w-px h-full bg-border/50 dark:bg-white/[0.08]" />
-              <button
-                onClick={() => setViewMode('timeline')}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1.5 font-medium transition-all duration-150',
-                  viewMode === 'timeline'
-                    ? 'bg-primary/[0.08] text-primary dark:bg-primary/[0.12]'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/40 dark:hover:bg-white/[0.04]',
-                )}
-              >
-                <GitBranch className="h-3.5 w-3.5" />
-                Timeline
-              </button>
-              <div className="w-px h-full bg-border/50 dark:bg-white/[0.08]" />
-              <button
-                onClick={() => setViewMode('kanban')}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1.5 font-medium transition-all duration-150',
-                  viewMode === 'kanban'
-                    ? 'bg-primary/[0.08] text-primary dark:bg-primary/[0.12]'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/40 dark:hover:bg-white/[0.04]',
-                )}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                Board
-              </button>
-            </div>
+            <Segment
+              value={viewMode}
+              onChange={(v) => setViewMode(v as 'cards' | 'timeline' | 'kanban')}
+              size="sm"
+              options={[
+                { value: 'cards', label: 'Cards', icon: <List className="h-3 w-3" /> },
+                { value: 'timeline', label: 'Timeline', icon: <GitBranch className="h-3 w-3" /> },
+                { value: 'kanban', label: 'Board', icon: <LayoutGrid className="h-3 w-3" /> },
+              ]}
+            />
           )}
 
           {canC && (
-            <Button onClick={() => sCO(true)} size="sm" className="gap-2 shadow-sm">
-              <Plus className="h-4 w-4" /> {t.courseAssignments.new}
+            <Button variant="primary" onClick={() => sCO(true)} size="md">
+              <Plus className="h-3.5 w-3.5" /> {t.courseAssignments.new}
             </Button>
           )}
         </div>
@@ -1499,95 +1475,134 @@ export default function AssignmentsPage() {
 
       {/* AI Feedback Dialog */}
       <Dialog open={aiOpen} onOpenChange={setAiOpen}>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-            {t.courseAssignments.aiFeedbackTitle}
-          </DialogTitle>
-        </DialogHeader>
-        {aiLoading ? (
-          <div className="space-y-3 py-4">
-            <div className="flex items-center gap-3 text-muted-foreground">
-              <div className="h-5 w-5 rounded-full border-2 border-purple-400 border-t-transparent animate-spin" />
-              {t.courseAssignments.aiFeedbackLoading}
+        <div className="relative overflow-hidden">
+          {/* glow orb */}
+          <span
+            aria-hidden
+            className="absolute -top-16 -right-16 w-[200px] h-[200px] rounded-full pointer-events-none opacity-50"
+            style={{
+              background: 'radial-gradient(circle, var(--accent-200), transparent 65%)',
+            }}
+          />
+          <div className="relative p-6 max-h-[80vh] overflow-y-auto space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div
+                className="w-7 h-7 rounded-[8px] flex items-center justify-center text-white shrink-0"
+                style={{ background: 'linear-gradient(135deg, var(--accent-500), var(--accent-700))' }}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <span className="font-mono text-[10px] uppercase tracking-[0.10em] text-[var(--accent-700)] block">
+                  AI Review
+                </span>
+                <DialogTitle className="text-[15px]">{t.courseAssignments.aiFeedbackTitle}</DialogTitle>
+              </div>
             </div>
-            {[1, 2, 3].map(i => <Skeleton key={i} className="h-4 w-full" />)}
+
+            {aiLoading ? (
+              <div className="space-y-3 py-3">
+                <div className="inline-flex items-center gap-2 text-[var(--fg-muted)] text-[12.5px]">
+                  <span className="inline-flex gap-[3px]">
+                    <span className="w-[5px] h-[5px] rounded-full bg-[var(--accent-500)] animate-[ai-pulse_1.2s_0s_infinite_ease-in-out]" />
+                    <span className="w-[5px] h-[5px] rounded-full bg-[var(--accent-500)] animate-[ai-pulse_1.2s_0.15s_infinite_ease-in-out]" />
+                    <span className="w-[5px] h-[5px] rounded-full bg-[var(--accent-500)] animate-[ai-pulse_1.2s_0.3s_infinite_ease-in-out]" />
+                  </span>
+                  <span className="font-mono">{t.courseAssignments.aiFeedbackLoading}</span>
+                </div>
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-3 w-full" />)}
+              </div>
+            ) : aiFeedback && (
+              <div className="space-y-4">
+                <div className="rounded-[8px] bg-[var(--bg-subtle)] p-3 text-[13px] leading-[1.55] border border-[var(--border-color)] text-[var(--fg)]">
+                  {aiFeedback.assessment}
+                </div>
+                {aiFeedback.strengths.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.10em] flex items-center gap-1.5 text-[var(--success)]">
+                      <CheckCircle2 className="h-3 w-3" /> {t.courseAssignments.strengths}
+                    </p>
+                    <ul className="space-y-1">
+                      {aiFeedback.strengths.map((s, i) => (
+                        <li key={i} className="text-[13px] flex items-start gap-2 text-[var(--fg)] leading-[1.55]">
+                          <span className="text-[var(--success)] mt-0.5">•</span>{s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {aiFeedback.improvements.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.10em] flex items-center gap-1.5 text-[var(--warning)]">
+                      <AlertCircle className="h-3 w-3" /> {t.courseAssignments.improvements}
+                    </p>
+                    <ul className="space-y-1">
+                      {aiFeedback.improvements.map((s, i) => (
+                        <li key={i} className="text-[13px] flex items-start gap-2 text-[var(--fg)] leading-[1.55]">
+                          <span className="text-[var(--warning)] mt-0.5">•</span>{s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {aiFeedback.suggestions.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.10em] flex items-center gap-1.5 text-[var(--info)]">
+                      <Lightbulb className="h-3 w-3" /> {t.courseAssignments.suggestions}
+                    </p>
+                    <ul className="space-y-1">
+                      {aiFeedback.suggestions.map((s, i) => (
+                        <li key={i} className="text-[13px] flex items-start gap-2 text-[var(--fg)] leading-[1.55]">
+                          <span className="text-[var(--info)] mt-0.5">•</span>{s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className="text-[11px] text-[var(--fg-subtle)] font-mono flex items-center gap-1 pt-2 border-t border-[var(--border-color)]">
+                  <TrendingUp className="h-3 w-3" />{t.courseAssignments.aiDisclaimer}
+                </p>
+              </div>
+            )}
           </div>
-        ) : aiFeedback && (
-          <div className="space-y-4">
-            <div className="rounded-lg bg-muted dark:bg-white/[0.04] p-3 text-sm border border-border/40 dark:border-white/[0.06]">
-              {aiFeedback.assessment}
-            </div>
-            {aiFeedback.strengths.length > 0 && (
-              <div>
-                <p className="text-sm font-medium flex items-center gap-1.5 mb-2 text-emerald-700 dark:text-emerald-400">
-                  <CheckCircle2 className="h-4 w-4" /> {t.courseAssignments.strengths}
-                </p>
-                <ul className="space-y-1">
-                  {aiFeedback.strengths.map((s, i) => (
-                    <li key={i} className="text-sm flex items-start gap-2"><span className="text-emerald-500 mt-0.5">•</span>{s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {aiFeedback.improvements.length > 0 && (
-              <div>
-                <p className="text-sm font-medium flex items-center gap-1.5 mb-2 text-amber-700 dark:text-amber-400">
-                  <AlertCircle className="h-4 w-4" /> {t.courseAssignments.improvements}
-                </p>
-                <ul className="space-y-1">
-                  {aiFeedback.improvements.map((s, i) => (
-                    <li key={i} className="text-sm flex items-start gap-2"><span className="text-amber-500 mt-0.5">•</span>{s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {aiFeedback.suggestions.length > 0 && (
-              <div>
-                <p className="text-sm font-medium flex items-center gap-1.5 mb-2 text-blue-700 dark:text-blue-400">
-                  <Lightbulb className="h-4 w-4" /> {t.courseAssignments.suggestions}
-                </p>
-                <ul className="space-y-1">
-                  {aiFeedback.suggestions.map((s, i) => (
-                    <li key={i} className="text-sm flex items-start gap-2"><span className="text-blue-500 mt-0.5">•</span>{s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <TrendingUp className="h-3 w-3" />{t.courseAssignments.aiDisclaimer}
-            </p>
-          </div>
-        )}
+        </div>
       </Dialog>
 
       {/* AI Explain Dialog */}
       <Dialog open={aiExplainOpen} onOpenChange={v => { if (!v) { aiExplainAbort.current?.abort(); } setAiExplainOpen(v); }}>
         <div className="p-6 max-h-[80vh] overflow-y-auto space-y-4">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2.5">
-              <Brain className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              {aiExplainAssignment?.title ?? 'Assignment Explanation'}
-            </DialogTitle>
-          </DialogHeader>
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-7 h-7 rounded-[8px] flex items-center justify-center text-white shrink-0"
+              style={{ background: 'linear-gradient(135deg, var(--info), color-mix(in oklch, var(--info), black 20%))' }}
+            >
+              <Brain className="h-3.5 w-3.5" />
+            </div>
+            <div className="min-w-0">
+              <span className="font-mono text-[10px] uppercase tracking-[0.10em] text-[var(--info)] block">
+                AI Explain
+              </span>
+              <DialogTitle className="text-[15px] truncate">
+                {aiExplainAssignment?.title ?? 'Assignment Explanation'}
+              </DialogTitle>
+            </div>
+          </div>
 
           {aiExplainStreaming && aiExplainText === '' ? (
-            <div className="flex items-center gap-3 py-8 justify-center text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-sm">Analyzing assignment…</span>
+            <div className="flex items-center gap-2 py-6 text-[var(--fg-muted)] text-[12.5px]">
+              <span className="inline-flex gap-[3px]">
+                <span className="w-[5px] h-[5px] rounded-full bg-[var(--info)] animate-[ai-pulse_1.2s_0s_infinite_ease-in-out]" />
+                <span className="w-[5px] h-[5px] rounded-full bg-[var(--info)] animate-[ai-pulse_1.2s_0.15s_infinite_ease-in-out]" />
+                <span className="w-[5px] h-[5px] rounded-full bg-[var(--info)] animate-[ai-pulse_1.2s_0.3s_infinite_ease-in-out]" />
+              </span>
+              <span className="font-mono">Analyzing assignment…</span>
             </div>
           ) : (
             <div className="space-y-3">
               {aiExplainText ? (
-                <div className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                <div className="text-[13.5px] text-[var(--fg)] leading-[1.6] whitespace-pre-wrap">
                   {aiExplainText}
-                  {aiExplainStreaming && (
-                    <motion.span
-                      className="inline-block h-4 w-0.5 bg-primary ml-0.5 align-middle"
-                      animate={{ opacity: [1, 0] }}
-                      transition={{ duration: 0.7, repeat: Infinity }}
-                    />
-                  )}
+                  {aiExplainStreaming && <span className="ai-caret" />}
                 </div>
               ) : null}
             </div>

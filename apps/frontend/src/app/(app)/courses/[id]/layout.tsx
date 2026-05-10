@@ -162,32 +162,33 @@ function CourseHero({
         {/* ── LEFT: course identity ── */}
         <div className="flex-1 px-8 pt-8 pb-7 lg:px-11 lg:pt-11 lg:pb-10">
 
-          {/* Back + code chip */}
+          {/* Back + course code eyebrow */}
           <motion.div variants={HERO_ITEM} className="flex items-center gap-3 mb-5">
             <Link
               href="/courses"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 dark:hover:bg-white/[0.07] transition-colors"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--fg-subtle)] hover:text-[var(--fg)] hover:bg-[var(--bg-muted)] transition-colors"
+              aria-label="Back to courses"
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
-            {/* Glowing course code chip — the system identity marker */}
-            <span className={cn(
-              'inline-flex items-center rounded-full border px-2.5 py-0.5',
-              'font-mono text-[10px] font-bold tracking-[0.2em] uppercase',
-              'border-primary/18 text-primary/70 bg-primary/[0.04]',
-              'dark:border-primary/40 dark:text-primary dark:bg-primary/[0.10]',
-              'dark:shadow-[0_0_12px_-2px_hsl(var(--primary)/0.55)]',
-              'transition-all duration-200',
-            )}>
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5',
+                'font-mono text-[10px] font-semibold tracking-[0.10em] uppercase',
+                'border-[var(--accent-200)] text-[var(--accent-700)] bg-[var(--accent-50)]',
+                'dark:shadow-[0_0_12px_-2px_color-mix(in_oklch,var(--accent-500),transparent_40%)]',
+                'transition-colors duration-ds-fast'
+              )}
+            >
+              <span className="w-1 h-1 rounded-full bg-[var(--accent-500)]" />
               {course.code}
             </span>
           </motion.div>
 
-          {/* Title */}
+          {/* Title — Instrument Serif italic */}
           <motion.h1
             variants={HERO_ITEM}
-            className="font-serif text-3xl font-bold leading-[1.12] text-foreground lg:text-[2.25rem] max-w-xl tracking-tight"
-            style={{ textShadow: '0 1px 3px hsl(38 25% 94% / 0.9), 0 2px 10px hsl(38 25% 94% / 0.5)' }}
+            className="font-serif font-normal leading-[1.05] tracking-[-0.02em] text-foreground text-[34px] lg:text-[42px] max-w-xl"
           >
             {course.title}
           </motion.h1>
@@ -213,29 +214,20 @@ function CourseHero({
           )}
 
           {/* Metadata badges */}
-          <motion.div variants={HERO_ITEM} className="mt-4 flex flex-wrap items-center gap-2">
-            <Badge
-              variant="outline"
-              className="gap-1.5 text-[11px] border-foreground/15 dark:border-white/[0.1] dark:text-foreground/70"
-            >
-              <Calendar className="h-3 w-3" />
+          <motion.div variants={HERO_ITEM} className="mt-4 flex flex-wrap items-center gap-1.5">
+            <Badge tone="neutral" variant="soft">
+              <Calendar className="h-2.5 w-2.5" />
               {course.semester}
             </Badge>
             {(course as any)?._count?.enrollments != null && (
-              <Badge
-                variant="outline"
-                className="gap-1.5 text-[11px] border-foreground/15 dark:border-white/[0.1] dark:text-foreground/70"
-              >
-                <Users className="h-3 w-3" />
+              <Badge tone="neutral" variant="soft">
+                <Users className="h-2.5 w-2.5" />
                 {(course as any)._count.enrollments} enrolled
               </Badge>
             )}
             {(course as any)?._count?.assignments != null && (
-              <Badge
-                variant="outline"
-                className="gap-1.5 text-[11px] border-foreground/15 dark:border-white/[0.1] dark:text-foreground/70"
-              >
-                <ClipboardList className="h-3 w-3" />
+              <Badge tone="neutral" variant="soft">
+                <ClipboardList className="h-2.5 w-2.5" />
                 {(course as any)._count.assignments} assignments
               </Badge>
             )}
@@ -263,12 +255,12 @@ function CourseHero({
                 </div>
               </div>
               <div>
-                <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/65 dark:text-primary/50">
+                <p className="font-mono text-[10px] font-medium uppercase tracking-[0.10em] text-[var(--fg-subtle)]">
                   Progress
                 </p>
-                <p className="text-sm font-semibold text-foreground dark:text-primary mt-0.5">
+                <p className="text-sm font-semibold text-[var(--fg)] mt-0.5">
                   {progress?.completedAssignments ?? 0}
-                  <span className="font-normal text-muted-foreground text-xs"> / {progress?.totalAssignments ?? 0}</span>
+                  <span className="font-normal text-[var(--fg-muted)] text-xs"> / {progress?.totalAssignments ?? 0}</span>
                 </p>
               </div>
             </div>
@@ -450,15 +442,19 @@ function AiAssistantPanel({
 
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
-        <div className="h-5 w-5 rounded-md bg-primary/12 dark:bg-primary/18 flex items-center justify-center">
-          <Sparkles className="h-3 w-3 text-primary" />
+        <div
+          className="h-5 w-5 rounded-[6px] flex items-center justify-center text-white"
+          style={{ background: 'linear-gradient(135deg, var(--accent-500), var(--accent-700))' }}
+        >
+          <Sparkles className="h-3 w-3" />
         </div>
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-primary/60 dark:text-primary/55">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.10em] text-[var(--accent-700)]">
           AI Assist
         </span>
         {/* Live pulse indicator */}
         <motion.div
-          className="ml-auto h-1.5 w-1.5 rounded-full bg-primary"
+          className="ml-auto h-1.5 w-1.5 rounded-full"
+          style={{ background: 'var(--accent-500)' }}
           animate={{ opacity: [1, 0.2, 1] }}
           transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
         />
@@ -546,7 +542,7 @@ function CourseRightSidebar({
             days !== null && days > 1 && days <= 3 && 'border-amber-400/30 dark:border-amber-400/20',
           )}
         >
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/65 dark:text-primary/50 mb-2">
+          <p className="font-mono text-[10px] font-medium uppercase tracking-[0.10em] text-[var(--fg-subtle)] mb-2">
             Next Deadline
           </p>
           <p className="text-sm font-medium text-foreground line-clamp-2 leading-snug">
@@ -582,7 +578,7 @@ function CourseRightSidebar({
                       'bg-red-100 text-red-700 dark:bg-red-400/15 dark:text-red-400';
         return (
           <div className={cardCn}>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/65 dark:text-primary/50 mb-3">
+            <p className="font-mono text-[10px] font-medium uppercase tracking-[0.10em] text-[var(--fg-subtle)] mb-3">
               Recent Grade
             </p>
             <div className="flex items-center gap-3">
