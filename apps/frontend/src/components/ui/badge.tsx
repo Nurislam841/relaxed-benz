@@ -48,15 +48,20 @@ const bv = cva(
   }
 );
 
-export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof bv> {
-  /** Legacy `variant="default|secondary|destructive|outline|success|warning"` mapping. */
-  legacyVariant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning';
+type LegacyVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning';
+type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'info';
+type Variant = 'soft' | 'solid' | LegacyVariant;
+
+export interface BadgeProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'tone'> {
+  tone?: Tone;
+  /** Accepts new ('soft'|'solid') OR legacy shadcn variants. */
+  variant?: Variant;
+  size?: 'sm' | 'md';
+  legacyVariant?: LegacyVariant;
   dot?: boolean;
 }
 
-function mapLegacy(v?: BadgeProps['legacyVariant']): { tone: any; variant: any } {
+function mapLegacy(v?: LegacyVariant): { tone: any; variant: any } {
   switch (v) {
     case 'default': return { tone: 'accent', variant: 'solid' };
     case 'secondary': return { tone: 'neutral', variant: 'soft' };
@@ -68,10 +73,7 @@ function mapLegacy(v?: BadgeProps['legacyVariant']): { tone: any; variant: any }
   }
 }
 
-function Badge({ className, tone, variant, size, legacyVariant, dot, children, ...p }: BadgeProps & {
-  // accept legacy `variant` strings via `variant` prop name too
-  variant?: any;
-}) {
+function Badge({ className, tone, variant, size, legacyVariant, dot, children, ...p }: BadgeProps) {
   // Detect legacy variant strings and map them
   const legacyKeys = ['default', 'secondary', 'destructive', 'outline', 'success', 'warning'];
   let resolvedTone = tone;

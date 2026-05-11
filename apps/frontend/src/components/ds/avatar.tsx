@@ -22,7 +22,7 @@ export function DsAvatar({ name = '?', src, size = 28, className }: AvatarProps)
     .join('')
     .toUpperCase();
 
-  const hash = [...name].reduce((a, c) => a + c.charCodeAt(0), 0);
+  const hash = Array.from(name).reduce((a, c) => a + c.charCodeAt(0), 0);
   const hue = (hash * 47) % 360;
 
   return (
