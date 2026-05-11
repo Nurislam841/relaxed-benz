@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Sparkles, Check, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export type GenStepStatus = 'pending' | 'active' | 'done' | 'error';
@@ -29,7 +30,9 @@ interface GenerationPanelProps {
  *     { status: 'pending', label: 'Validating' },
  *   ]}/>
  */
-export function GenerationPanel({ title = 'Generating', steps, className }: GenerationPanelProps) {
+export function GenerationPanel({ title, steps, className }: GenerationPanelProps) {
+  const t = useT() as any;
+  const heading = title ?? t.ui?.generating ?? 'Generating';
   const done = steps.filter((s) => s.status === 'done').length;
 
   return (
@@ -37,7 +40,7 @@ export function GenerationPanel({ title = 'Generating', steps, className }: Gene
       <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-2">
           <Sparkles className="w-3.5 h-3.5 text-[var(--accent-600)]" />
-          <span className="text-[13px] font-semibold text-[var(--fg)]">{title}</span>
+          <span className="text-[13px] font-semibold text-[var(--fg)]">{heading}</span>
         </div>
         <span className="font-mono text-[11px] text-[var(--fg-subtle)]">
           {done}/{steps.length}

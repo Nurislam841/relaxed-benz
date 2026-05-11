@@ -200,15 +200,17 @@ interface ScheduleRowProps {
   item: ScheduleItem;
 }
 
-const TYPE_TONES: Record<string, { bg: string; fg: string; label: string }> = {
-  LECTURE: { bg: 'var(--accent-100)', fg: 'var(--accent-700)', label: 'Lecture' },
-  PRACTICE: { bg: 'color-mix(in oklch, var(--info), transparent 85%)', fg: 'var(--info)', label: 'Practice' },
-  LAB: { bg: 'color-mix(in oklch, var(--success), transparent 85%)', fg: 'var(--success)', label: 'Lab' },
-  EXAM: { bg: 'color-mix(in oklch, var(--danger), transparent 85%)', fg: 'var(--danger)', label: 'Exam' },
+const TYPE_TONES: Record<string, { bg: string; fg: string; labelKey: string; fallback: string }> = {
+  LECTURE: { bg: 'var(--accent-100)', fg: 'var(--accent-700)', labelKey: 'typeLecture', fallback: 'Lecture' },
+  PRACTICE: { bg: 'color-mix(in oklch, var(--info), transparent 85%)', fg: 'var(--info)', labelKey: 'typePractice', fallback: 'Practice' },
+  LAB: { bg: 'color-mix(in oklch, var(--success), transparent 85%)', fg: 'var(--success)', labelKey: 'typeLab', fallback: 'Lab' },
+  EXAM: { bg: 'color-mix(in oklch, var(--danger), transparent 85%)', fg: 'var(--danger)', labelKey: 'typeExam', fallback: 'Exam' },
 };
 
 export function ScheduleRow({ item }: ScheduleRowProps) {
+  const t = useT() as any;
   const tone = TYPE_TONES[item.type] ?? TYPE_TONES.LECTURE;
+  const label = t.ui?.[tone.labelKey] ?? tone.fallback;
   const start = new Date(item.startsAt);
   const end = new Date(item.endsAt);
   const fmt = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -231,7 +233,7 @@ export function ScheduleRow({ item }: ScheduleRowProps) {
         className="text-[10px] font-mono uppercase tracking-[0.06em] px-1.5 py-0.5 rounded shrink-0"
         style={{ background: tone.bg, color: tone.fg }}
       >
-        {tone.label}
+        {label}
       </span>
     </div>
   );

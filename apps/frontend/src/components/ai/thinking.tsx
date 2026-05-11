@@ -1,13 +1,16 @@
 'use client';
 
 import * as React from 'react';
+import { useT } from '@/lib/i18n';
 
 /**
  * Thinking indicator — three pulsing dots with optional label.
  *
  *   <ThinkingDots label="Generating" />
  */
-export function ThinkingDots({ label = 'Thinking' }: { label?: string }) {
+export function ThinkingDots({ label }: { label?: string }) {
+  const t = useT() as any;
+  const text = label ?? t.ui?.thinking ?? 'Thinking';
   return (
     <div className="inline-flex items-center gap-2 text-[var(--fg-muted)] text-[12.5px]">
       <span className="inline-flex gap-[3px]">
@@ -21,7 +24,7 @@ export function ThinkingDots({ label = 'Thinking' }: { label?: string }) {
           />
         ))}
       </span>
-      <span className="font-mono">{label}…</span>
+      <span className="font-mono">{text}…</span>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { Segment } from './segment';
+import { useT } from '@/lib/i18n';
 
 type Density = 'compact' | 'normal' | 'comfortable';
 
@@ -10,6 +11,7 @@ type Density = 'compact' | 'normal' | 'comfortable';
  * scales --row-h, --control-h via the global --density var.
  */
 export function DensityToggle() {
+  const t = useT() as any;
   const [density, setDensity] = React.useState<Density>('normal');
 
   React.useEffect(() => {
@@ -42,9 +44,9 @@ export function DensityToggle() {
       value={density}
       onChange={set}
       options={[
-        { value: 'compact', label: 'Compact' },
-        { value: 'normal', label: 'Normal' },
-        { value: 'comfortable', label: 'Comfortable' },
+        { value: 'compact', label: t.ui?.densityCompact ?? 'Compact' },
+        { value: 'normal', label: t.ui?.densityNormal ?? 'Normal' },
+        { value: 'comfortable', label: t.ui?.densityComfortable ?? 'Comfortable' },
       ]}
     />
   );
