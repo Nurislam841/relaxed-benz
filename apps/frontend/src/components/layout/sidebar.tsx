@@ -43,7 +43,8 @@ export function Sidebar() {
   const path = usePathname();
   const { data: user } = useMe();
   const t = useT();
-  const [adminOpen, setAdminOpen] = useState(path.startsWith('/admin'));
+  // Admin section opens by default for admin users; clicking the header toggles.
+  const [adminOpen, setAdminOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isActive = (h: string) =>
