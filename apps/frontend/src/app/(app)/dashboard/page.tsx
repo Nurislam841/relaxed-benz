@@ -298,23 +298,23 @@ export default function DashboardPage() {
   const quickLinks =
     isAdmin
       ? [
-          { href: '/admin',         label: t.admin.title,       icon: Shield,          description: 'System overview & user management'   },
-          { href: '/courses',       label: t.nav.courses,       icon: BookOpen,        description: 'Browse and manage all courses'        },
-          { href: '/activity',      label: t.nav.activity,      icon: LayoutDashboard, description: 'View recent platform events'          },
-          { href: '/notifications', label: t.nav.notifications, icon: Bell,            description: 'Check system updates'                },
+          { href: '/admin',         label: t.admin.title,       icon: Shield,          description: t.dashboard.qlAdminDesc },
+          { href: '/courses',       label: t.nav.courses,       icon: BookOpen,        description: t.dashboard.qlAdminCoursesDesc },
+          { href: '/activity',      label: t.nav.activity,      icon: LayoutDashboard, description: t.dashboard.qlActivityDesc },
+          { href: '/notifications', label: t.nav.notifications, icon: Bell,            description: t.dashboard.qlNotificationsDesc },
         ]
       : isTeacher
       ? [
-          { href: '/courses',  label: t.nav.courses,   icon: BookOpen,        description: 'Your teaching roster'       },
-          { href: '/schedule', label: t.nav.schedule,  icon: Calendar,        description: 'Weekly class timetable'     },
-          { href: '/activity', label: t.nav.activity,  icon: LayoutDashboard, description: 'Recent student activity'    },
-          { href: '/search',   label: t.nav.search,    icon: Search,          description: 'Find students or content'   },
+          { href: '/courses',  label: t.nav.courses,   icon: BookOpen,        description: t.dashboard.qlTeacherCoursesDesc },
+          { href: '/schedule', label: t.nav.schedule,  icon: Calendar,        description: t.dashboard.qlScheduleDesc },
+          { href: '/activity', label: t.nav.activity,  icon: LayoutDashboard, description: t.dashboard.qlTeacherActivityDesc },
+          { href: '/search',   label: t.nav.search,    icon: Search,          description: t.dashboard.qlSearchDesc },
         ]
       : [
-          { href: '/courses',       label: t.nav.courses,       icon: BookOpen, description: 'Browse your enrolled courses' },
-          { href: '/schedule',      label: t.nav.schedule,      icon: Calendar, description: 'Weekly class schedule'        },
-          { href: '/calendar',      label: t.nav.calendar,      icon: Calendar, description: 'Upcoming dates & events'      },
-          { href: '/notifications', label: t.nav.notifications, icon: Bell,     description: 'Check latest updates'         },
+          { href: '/courses',       label: t.nav.courses,       icon: BookOpen, description: t.dashboard.qlStudentCoursesDesc },
+          { href: '/schedule',      label: t.nav.schedule,      icon: Calendar, description: t.dashboard.qlStudentScheduleDesc },
+          { href: '/calendar',      label: t.nav.calendar,      icon: Calendar, description: t.dashboard.qlCalendarDesc },
+          { href: '/notifications', label: t.nav.notifications, icon: Bell,     description: t.dashboard.qlStudentNotificationsDesc },
         ];
 
   // ─────────────────────────────────────────────────────────────────────────

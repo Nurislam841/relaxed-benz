@@ -8,7 +8,19 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Eyebrow } from '@/components/ds/eyebrow';
 import { HDisplay } from '@/components/ds/h-display';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+
+/** Returns a user-friendly first name to greet by. Falls back to full name
+ *  if first token looks like a generic role word (e.g. "System Admin" → "Admin"). */
+function pickGreetingName(fullName?: string): string {
+  if (!fullName) return '';
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length >= 2 && /^(system|admin|user|guest)$/i.test(parts[0])) {
+    return parts[1];
+  }
+  return parts[0];
+}
 
 // ── Types ─────────────────────────────────────────────────────
 export type HeroStat = { label: string; value: number | string };
@@ -29,6 +41,7 @@ export function DashboardHero({
   formattedDate,
   stats = [],
 }: DashboardHeroProps) {
+  const t = useT();
   return (
     <Card className="relative overflow-hidden p-6 sm:p-8" hoverable={false}>
       {/* Decorative violet glow */}
@@ -63,7 +76,7 @@ export function DashboardHero({
           </div>
           {name && (
             <HDisplay size="md" as="h1">
-              Welcome back, <em>{name.split(' ')[0]}</em>
+              {t.dashboard.welcomeBack}, <em>{pickGreetingName(name)}</em>
             </HDisplay>
           )}
           {subtitle && (

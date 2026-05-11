@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Sparkles, ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ds/kbd';
+import { useT } from '@/lib/i18n';
 
 interface AIComposerProps {
   placeholder?: string;
@@ -16,11 +17,14 @@ interface AIComposerProps {
  * AI chat composer — multi-line textarea with chip suggestions and ⌘↵ hint.
  */
 export function AIComposer({
-  placeholder = 'Ask anything…',
+  placeholder,
   suggestions = [],
   onSend,
   disabled,
 }: AIComposerProps) {
+  const t = useT() as any;
+  const ph = placeholder ?? t.ui?.composerPlaceholder ?? 'Ask anything…';
+  const sendLabel = t.ui?.composerSend ?? 'Send';
   const [val, setVal] = React.useState('');
 
   const handleSend = () => {
@@ -42,7 +46,7 @@ export function AIComposer({
         value={val}
         onChange={(e) => setVal(e.target.value)}
         onKeyDown={handleKey}
-        placeholder={placeholder}
+        placeholder={ph}
         rows={2}
         disabled={disabled}
         className="w-full border-none outline-none resize-none bg-transparent text-[var(--fg)]
@@ -70,7 +74,7 @@ export function AIComposer({
           <Kbd>↵</Kbd>
           <Button variant="ai" size="sm" onClick={handleSend} disabled={!val.trim() || disabled}>
             <ArrowUp className="w-3 h-3" />
-            Send
+            {sendLabel}
           </Button>
         </div>
       </div>

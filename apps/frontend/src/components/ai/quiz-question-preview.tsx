@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Sparkles, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 interface QuizQuestion {
@@ -38,6 +39,7 @@ export function QuizQuestionPreview({
 }: QuizQuestionPreviewProps) {
   const [internalPick, setInternalPick] = React.useState<number | null>(null);
   const pick = pickedIndex !== undefined ? pickedIndex : internalPick;
+  const t = useT() as any;
 
   const handlePick = (i: number) => {
     if (revealed) return;
@@ -59,11 +61,11 @@ export function QuizQuestionPreview({
         {question.type && <Badge tone="neutral" variant="soft">{question.type}</Badge>}
         <Badge tone="accent" variant="soft">
           <Sparkles className="w-2.5 h-2.5" />
-          AI generated
+          {t.ui?.aiGenerated ?? 'AI generated'}
         </Badge>
         {question.points !== undefined && (
           <span className="ml-auto font-mono text-[11px] text-[var(--fg-subtle)]">
-            {question.points} pts
+            {question.points} {t.ui?.points ?? 'pts'}
           </span>
         )}
       </div>
@@ -112,7 +114,7 @@ export function QuizQuestionPreview({
                 {String.fromCharCode(65 + i)}
               </span>
               <span className="flex-[8] text-[var(--fg)]">{opt}</span>
-              {showCorrect && <Badge tone="success" variant="soft">correct</Badge>}
+              {showCorrect && <Badge tone="success" variant="soft">{t.ui?.correct ?? 'correct'}</Badge>}
             </button>
           );
         })}
@@ -122,7 +124,7 @@ export function QuizQuestionPreview({
         <div className="mt-3 p-3 rounded-[8px] bg-[var(--bg-subtle)] border border-[var(--border-color)] text-[12.5px] text-[var(--fg-muted)] leading-[1.55]">
           <div className="font-semibold text-[var(--fg)] mb-1 flex items-center gap-1.5">
             <Sparkles className="w-3 h-3 text-[var(--accent-600)]" />
-            Explanation
+            {t.ui?.explanation ?? 'Explanation'}
           </div>
           {question.explanation}
         </div>

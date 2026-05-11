@@ -49,7 +49,7 @@ export default function ParticipantsPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--fg-subtle)] pointer-events-none" />
             <Input
               className="pl-8"
-              placeholder="Search by name or email…"
+              placeholder={(t as any).ui?.searchByNameEmail ?? 'Search by name or email…'}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />

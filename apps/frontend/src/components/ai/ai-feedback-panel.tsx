@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Sparkles, Check, Edit, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 interface FeedbackCriterion {
@@ -40,6 +41,7 @@ export function AIFeedbackPanel({
   onDismiss,
   className,
 }: AIFeedbackPanelProps) {
+  const t = useT() as any;
   return (
     <div
       className={cn(
@@ -68,9 +70,9 @@ export function AIFeedbackPanel({
             <Sparkles className="w-3 h-3" />
           </div>
           <span className="text-[13px] font-semibold text-[var(--fg)]">
-            AI grading suggestion
+            {t.ui?.aiGrading ?? 'AI grading suggestion'}
           </span>
-          {draft && <Badge tone="accent" variant="soft">draft</Badge>}
+          {draft && <Badge tone="accent" variant="soft">{t.ui?.draft ?? 'draft'}</Badge>}
         </div>
         {score != null && (
           <div className="text-right">
@@ -110,19 +112,19 @@ export function AIFeedbackPanel({
         {onApply && (
           <Button variant="primary" size="sm" onClick={onApply}>
             <Check className="w-3 h-3" />
-            Apply suggestion
+            {t.ui?.applySuggestion ?? 'Apply suggestion'}
           </Button>
         )}
         {onEdit && (
           <Button variant="ghost" size="sm" onClick={onEdit}>
             <Edit className="w-3 h-3" />
-            Edit
+            {t.ui?.edit ?? 'Edit'}
           </Button>
         )}
         {onDismiss && (
           <Button variant="ghost" size="sm" onClick={onDismiss}>
             <X className="w-3 h-3" />
-            Dismiss
+            {t.ui?.dismiss ?? 'Dismiss'}
           </Button>
         )}
       </div>
