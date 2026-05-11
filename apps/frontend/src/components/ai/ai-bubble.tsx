@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Sparkles, Copy, ThumbsUp, ThumbsDown, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DsAvatar } from '@/components/ds/avatar';
+import { useT } from '@/lib/i18n';
 
 interface AIBubbleProps {
   role: 'user' | 'assistant';
@@ -26,6 +27,7 @@ export function AIBubble({
   showActions = true,
 }: AIBubbleProps) {
   const isUser = role === 'user';
+  const t = useT() as any;
 
   return (
     <div
@@ -90,10 +92,10 @@ export function AIBubble({
 
         {!isUser && showActions && (
           <div className="flex gap-1 mt-2 text-[var(--fg-subtle)]">
-            <BubbleAction icon={<Copy className="w-3.5 h-3.5" />} label="Copy" />
-            <BubbleAction icon={<ThumbsUp className="w-3.5 h-3.5" />} label="Up" />
-            <BubbleAction icon={<ThumbsDown className="w-3.5 h-3.5" />} label="Down" />
-            <BubbleAction icon={<RotateCcw className="w-3.5 h-3.5" />} label="Retry" />
+            <BubbleAction icon={<Copy className="w-3.5 h-3.5" />} label={t.ui?.copy ?? 'Copy'} />
+            <BubbleAction icon={<ThumbsUp className="w-3.5 h-3.5" />} label={t.ui?.thumbsUp ?? 'Helpful'} />
+            <BubbleAction icon={<ThumbsDown className="w-3.5 h-3.5" />} label={t.ui?.thumbsDown ?? 'Not helpful'} />
+            <BubbleAction icon={<RotateCcw className="w-3.5 h-3.5" />} label={t.ui?.retry ?? 'Retry'} />
           </div>
         )}
       </div>

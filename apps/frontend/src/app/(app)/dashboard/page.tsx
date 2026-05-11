@@ -459,7 +459,7 @@ export default function DashboardPage() {
                     {nextClassItem ? (
                       <p className="text-xs text-muted-foreground/70">
                         Next: <span className="font-medium text-foreground/60">{nextClassItem.course?.title}</span>
-                        {' · '}{new Intl.DateTimeFormat('en', { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(nextClassItem.startsAt))}
+                        {' · '}{new Intl.DateTimeFormat(locale, { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(nextClassItem.startsAt))}
                       </p>
                     ) : (
                       <Link href="/schedule" className="text-xs text-primary/80 hover:text-primary hover:underline">View full schedule →</Link>
@@ -568,7 +568,7 @@ export default function DashboardPage() {
                     {nextClassItem ? (
                       <p className="text-xs text-muted-foreground/70">
                         Next: <span className="font-medium text-foreground/60">{nextClassItem.course?.title}</span>
-                        {' · '}{new Intl.DateTimeFormat('en', { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(nextClassItem.startsAt))}
+                        {' · '}{new Intl.DateTimeFormat(locale, { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(nextClassItem.startsAt))}
                       </p>
                     ) : (
                       <Link href="/schedule" className="text-xs text-primary/80 hover:text-primary hover:underline">View full schedule →</Link>
@@ -716,7 +716,7 @@ export default function DashboardPage() {
                     {nextClassItem ? (
                       <p className="text-xs text-muted-foreground/70">
                         Next: <span className="font-medium text-foreground/60">{nextClassItem.course?.title}</span>
-                        {' · '}{new Intl.DateTimeFormat('en', { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(nextClassItem.startsAt))}
+                        {' · '}{new Intl.DateTimeFormat(locale, { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(nextClassItem.startsAt))}
                       </p>
                     ) : (
                       <Link href="/schedule" className="text-xs text-primary/80 hover:text-primary hover:underline">View full schedule →</Link>
