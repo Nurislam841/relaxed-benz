@@ -37,21 +37,21 @@
     --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     /* --font-sans, --font-serif provided by next/font in layout.tsx */
 
-    /* Type scale */
-    --text-xs: 11px;
-    --text-sm: 12px;
-    --text-base: 13px;
-    --text-md: 14px;
-    --text-lg: 16px;
-    --text-xl: 19px;
-    --text-2xl: 24px;
-    --text-3xl: 30px;
-    --text-4xl: 38px;
-    --text-5xl: 48px;
-    --text-6xl: 64px;
+    /* Type scale — bumped ~10% for readability */
+    --text-xs: 12px;
+    --text-sm: 13px;
+    --text-base: 14px;
+    --text-md: 15px;
+    --text-lg: 17px;
+    --text-xl: 20px;
+    --text-2xl: 26px;
+    --text-3xl: 32px;
+    --text-4xl: 40px;
+    --text-5xl: 52px;
+    --text-6xl: 68px;
 
     /* ── Density (toggle via [data-density="compact"]) ── */
-    --density: 1;
+    --density: 1.1;
     --row-h: calc(36px * var(--density));
     --control-h: calc(32px * var(--density));
     --control-h-lg: calc(38px * var(--density));
@@ -66,22 +66,22 @@
   }
 
   /* ──────────────────────────────────────────────
-     Light theme — warm-cool neutrals + violet accent
+     Light theme — warm-cool neutrals + forest accent
      ────────────────────────────────────────────── */
   :root,
   [data-theme='light'],
   html:not(.dark) {
-    /* Accent ramp */
-    --accent-50:  oklch(0.975 0.015 290);
-    --accent-100: oklch(0.945 0.04 290);
-    --accent-200: oklch(0.89 0.075 290);
-    --accent-300: oklch(0.82 0.12 290);
-    --accent-400: oklch(0.72 0.16 290);
-    --accent-500: oklch(0.64 0.19 290);
-    --accent-600: oklch(0.56 0.20 290);
-    --accent-700: oklch(0.48 0.18 290);
-    --accent-800: oklch(0.40 0.15 290);
-    --accent-900: oklch(0.30 0.10 290);
+    /* Accent ramp — forest green (hue 150) */
+    --accent-50:  oklch(0.970 0.022 150);
+    --accent-100: oklch(0.935 0.055 150);
+    --accent-200: oklch(0.875 0.095 150);
+    --accent-300: oklch(0.790 0.130 150);
+    --accent-400: oklch(0.680 0.150 150);
+    --accent-500: oklch(0.560 0.155 150);
+    --accent-600: oklch(0.470 0.140 150);
+    --accent-700: oklch(0.380 0.115 150);
+    --accent-800: oklch(0.300 0.085 150);
+    --accent-900: oklch(0.220 0.055 150);
 
     /* Surfaces */
     --bg:           oklch(0.992 0.003 280);
@@ -116,27 +116,27 @@
     --shadow-md: 0 4px 12px -2px rgba(15, 12, 30, 0.08), 0 2px 4px -1px rgba(15, 12, 30, 0.04);
     --shadow-lg: 0 16px 32px -8px rgba(15, 12, 30, 0.12), 0 4px 8px -2px rgba(15, 12, 30, 0.06);
     --shadow-xl: 0 32px 64px -16px rgba(15, 12, 30, 0.18);
-    --shadow-glow: 0 0 0 4px oklch(0.64 0.19 290 / 0.15);
+    --shadow-glow: 0 0 0 4px oklch(0.56 0.155 150 / 0.18);
 
-    --grid-line: oklch(0.93 0.005 280);
+    --grid-line: oklch(0.93 0.008 150);
 
     /* ── shadcn/ui compat layer (HSL-shaped strings) ──
        These mirror the OKLCH semantics so existing components keep working.
        Format: "H S% L%". */
-    --background: 280 100% 99%;
-    --foreground: 280 8% 18%;
+    --background: 150 30% 99%;
+    --foreground: 150 8% 18%;
     --card: 0 0% 100%;
-    --card-foreground: 280 8% 18%;
+    --card-foreground: 150 8% 18%;
     --popover: 0 0% 100%;
-    --popover-foreground: 280 8% 18%;
-    --primary: 270 65% 50%;
+    --popover-foreground: 150 8% 18%;
+    --primary: 150 55% 32%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 280 8% 95%;
-    --secondary-foreground: 280 8% 25%;
-    --muted: 280 6% 93%;
-    --muted-foreground: 280 4% 45%;
-    --accent: 280 30% 92%;
-    --accent-foreground: 270 60% 35%;
+    --secondary: 150 8% 95%;
+    --secondary-foreground: 150 8% 25%;
+    --muted: 150 6% 93%;
+    --muted-foreground: 150 4% 45%;
+    --accent: 150 30% 90%;
+    --accent-foreground: 150 55% 28%;
     --destructive: 12 80% 55%;
     --destructive-foreground: 0 0% 100%;
     --border: 280 8% 88%;
@@ -235,8 +235,8 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
-    font-size: var(--text-md);
-    line-height: 1.5;
+    font-size: 15px;
+    line-height: 1.55;
     color: var(--fg);
     background: var(--bg);
     -webkit-font-smoothing: antialiased;
