@@ -156,7 +156,7 @@ Provide:
 Be encouraging and constructive. Format as JSON: { "assessment": "...", "strengths": ["..."], "improvements": ["..."], "suggestions": ["..."] }`;
 
     const response = await this.client!.messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -215,7 +215,7 @@ Return ONLY valid JSON matching this exact structure:
 correctIndex is 0-based (0=A, 1=B, 2=C, 3=D). Do not include any text outside the JSON.`;
 
     const response = await this.client!.messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 16000,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -281,7 +281,7 @@ Provide a helpful course overview as JSON:
 }`;
 
     const response = await this.client!.messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -362,7 +362,7 @@ Provide analysis as JSON:
 }`;
 
     const response = await this.client!.messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -397,7 +397,7 @@ You help students understand course material, clarify assignment requirements, a
 Be concise, encouraging, and educational. ${context ? `Context: ${context}` : ''}`;
 
     const stream = this.client!.messages.stream({
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2048,
       system: systemPrompt,
       messages: [{ role: 'user', content: message }],

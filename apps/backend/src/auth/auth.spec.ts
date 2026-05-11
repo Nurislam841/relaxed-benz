@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { AppModule } from '../app.module';
 
 describe('Auth (e2e)', () => {
@@ -38,7 +38,7 @@ describe('Auth (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email, password: 'password123' });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('accessToken');
   });
 

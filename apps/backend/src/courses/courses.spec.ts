@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { AppModule } from '../app.module';
 
 describe('Courses (e2e)', () => {
@@ -37,7 +37,9 @@ describe('Courses (e2e)', () => {
       .get('/api/courses')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
+    // Paginated response shape: { items: Course[], total, page, limit, hasNext }
+    expect(res.body).toHaveProperty('items');
+    expect(Array.isArray(res.body.items)).toBe(true);
   });
 
   it('GET /api/courses - returns 401 without token', async () => {
