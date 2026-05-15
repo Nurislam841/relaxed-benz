@@ -37,6 +37,18 @@ enum NotificationType {
   SYSTEM
 }
 
+enum QuizSource {
+  MANUAL
+  AI_GENERATED
+}
+
+enum QuizSessionStatus {
+  LOBBY
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
 model User {
   id                  String              @id @default(uuid())
   email               String              @unique
@@ -47,6 +59,7 @@ model User {
   preferredLang       String?             @map("preferred_lang")
   createdAt           DateTime            @default(now()) @map("created_at")
   updatedAt           DateTime            @updatedAt @map("updated_at")
+  deletedAt           DateTime?           @map("deleted_at")
   group               Group?              @relation(fields: [groupId], references: [id], onDelete: SetNull)
   enrollments         Enrollment[]
   announcements       Announcement[]
@@ -58,6 +71,9 @@ model User {
   attendance          Attendance[]
   aiRequestLogs       AiRequestLog[]
   assignmentComments  AssignmentComment[]
+  quizzesCreated      Quiz[]              @relation("QuizCreatedBy")
+  quizAttempts        QuizAttempt[]       @relation("QuizAttemptStudent")
+  quizSessionsHosted  QuizSession[]       @relation("QuizSessionHost")
 
   @@map("users")
 }
@@ -69,6 +85,7 @@ model Group {
   year          Int?
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
+  deletedAt     DateTime?      @map("deleted_at")
   users         User[]
   scheduleItems ScheduleItem[]
 
@@ -84,6 +101,7 @@ model Course {
   semester      String           @default("2025-Spring")
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
+  deletedAt     DateTime?        @map("deleted_at")
   teacher       User?            @relation("CourseTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
   enrollments   Enrollment[]
   announcements Announcement[]
@@ -91,20 +109,22 @@ model Course {
   scheduleItems ScheduleItem[]
   materials     CourseMaterial[]
   attendance    Attendance[]
+  quizzes       Quiz[]
 
   @@index([teacherId])
   @@map("courses")
 }
 
 model CourseMaterial {
-  id        String   @id @default(uuid())
-  courseId  String   @map("course_id")
+  id        String    @id @default(uuid())
+  courseId  String    @map("course_id")
   title     String
   type      String
   url       String?
   content   String?
-  createdAt DateTime @default(now()) @map("created_at")
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+  course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@index([courseId])
   @@map("course_materials")
@@ -132,6 +152,7 @@ model Enrollment {
   courseId     String     @map("course_id")
   roleInCourse CourseRole @default(STUDENT) @map("role_in_course")
   createdAt    DateTime   @default(now()) @map("created_at")
+  deletedAt    DateTime?  @map("deleted_at")
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
@@ -142,14 +163,15 @@ model Enrollment {
 }
 
 model Announcement {
-  id        String   @id @default(uuid())
-  courseId  String?  @map("course_id")
-  authorId  String   @map("author_id")
+  id        String    @id @default(uuid())
+  courseId  String?   @map("course_id")
+  authorId  String    @map("author_id")
   title     String
   body      String
-  createdAt DateTime @default(now()) @map("created_at")
-  course    Course?  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+  course    Course?   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([courseId])
   @@map("announcements")
@@ -164,6 +186,7 @@ model Assignment {
   maxScore    Int                  @default(100) @map("max_score")
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")
+  deletedAt   DateTime?            @map("deleted_at")
   course      Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
   submissions Submission[]
   resources   AssignmentResource[]
@@ -182,6 +205,7 @@ model AssignmentResource {
   fileSize     Int?       @map("file_size")
   mimeType     String?    @map("mime_type")
   createdAt    DateTime   @default(now()) @map("created_at")
+  deletedAt    DateTime?  @map("deleted_at")
   assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
 
   @@index([assignmentId])
@@ -194,6 +218,7 @@ model AssignmentComment {
   authorId     String     @map("author_id")
   body         String     @db.Text
   createdAt    DateTime   @default(now()) @map("created_at")
+  deletedAt    DateTime?  @map("deleted_at")
   assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   author       User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
@@ -261,6 +286,7 @@ model ScheduleItem {
   room      String
   type      ScheduleType @default(LECTURE)
   createdAt DateTime     @default(now()) @map("created_at")
+  deletedAt DateTime?    @map("deleted_at")
   course    Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
   group     Group?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
@@ -310,4 +336,115 @@ model AiRequestLog {
   @@index([userId])
   @@index([createdAt])
   @@map("ai_request_logs")
+}
+
+// ─── Quiz system (manual + AI-generated, with future Kahoot mode) ──────────────
+//
+// A Quiz belongs to a Course and holds a list of QuizQuestions in display order.
+// Source is MANUAL when a teacher hand-wrote it, AI_GENERATED when Claude
+// produced it (we still let the teacher edit before publishing).
+//
+// QuizAttempts record every play-through — for both single-player practice and
+// live Kahoot-style sessions. Each attempt has one QuizAttemptAnswer per
+// question the student answered.
+//
+// QuizSession (added for live multiplayer) groups simultaneous attempts under
+// a 6-digit join code so a teacher can host a real-time quiz.
+
+model Quiz {
+  id              String         @id @default(uuid())
+  courseId        String         @map("course_id")
+  createdById     String         @map("created_by_id")
+  title           String
+  description     String         @default("")
+  source          QuizSource     @default(MANUAL)
+  isPublished     Boolean        @default(false) @map("is_published")
+  secondsPerQuestion Int         @default(30) @map("seconds_per_question")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  deletedAt       DateTime?      @map("deleted_at")
+  course          Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdBy       User           @relation("QuizCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  questions       QuizQuestion[]
+  attempts        QuizAttempt[]
+  sessions        QuizSession[]
+
+  @@index([courseId])
+  @@index([createdById])
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id           String                @id @default(uuid())
+  quizId       String                @map("quiz_id")
+  position     Int                   @default(0)
+  question     String                @db.Text
+  options      Json                  // ["A","B","C","D"] — usually 4 options
+  correctIndex Int                   @map("correct_index")
+  explanation  String                @default("") @db.Text
+  points       Int                   @default(100)
+  createdAt    DateTime              @default(now()) @map("created_at")
+  deletedAt    DateTime?             @map("deleted_at")
+  quiz         Quiz                  @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  answers      QuizAttemptAnswer[]
+
+  @@index([quizId])
+  @@map("quiz_questions")
+}
+
+model QuizAttempt {
+  id            String                @id @default(uuid())
+  quizId        String                @map("quiz_id")
+  studentId     String                @map("student_id")
+  sessionId     String?               @map("session_id")
+  startedAt     DateTime              @default(now()) @map("started_at")
+  completedAt   DateTime?             @map("completed_at")
+  score         Int                   @default(0)
+  totalPoints   Int                   @default(0) @map("total_points")
+  quiz          Quiz                  @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student       User                  @relation("QuizAttemptStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  session       QuizSession?          @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  answers       QuizAttemptAnswer[]
+
+  @@index([quizId])
+  @@index([studentId])
+  @@index([sessionId])
+  @@map("quiz_attempts")
+}
+
+model QuizAttemptAnswer {
+  id             String       @id @default(uuid())
+  attemptId      String       @map("attempt_id")
+  questionId     String       @map("question_id")
+  pickedIndex    Int          @map("picked_index")
+  isCorrect      Boolean      @map("is_correct")
+  pointsEarned   Int          @default(0) @map("points_earned")
+  responseTimeMs Int          @default(0) @map("response_time_ms")
+  answeredAt     DateTime     @default(now()) @map("answered_at")
+  attempt        QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question       QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+  @@map("quiz_attempt_answers")
+}
+
+model QuizSession {
+  id           String            @id @default(uuid())
+  quizId       String            @map("quiz_id")
+  hostId       String            @map("host_id")
+  joinCode     String            @unique @map("join_code")
+  status       QuizSessionStatus @default(LOBBY)
+  currentIndex Int               @default(0) @map("current_index")
+  startedAt    DateTime?         @map("started_at")
+  endedAt      DateTime?         @map("ended_at")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  quiz         Quiz              @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  host         User              @relation("QuizSessionHost", fields: [hostId], references: [id], onDelete: Cascade)
+  attempts     QuizAttempt[]
+
+  @@index([quizId])
+  @@index([joinCode])
+  @@map("quiz_sessions")
 }

@@ -34,3 +34,26 @@ export class ChatMessageDto {
   @ApiPropertyOptional() @IsOptional() @IsString() context?: string;
   @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
 }
+
+/**
+ * Personal Study Coach for a single student. Combines grade trajectory,
+ * a day-by-day study plan, and systematic mistake patterns into one
+ * actionable report. Replaces the descriptive-only `StudentAnalysisDto`.
+ */
+export class StudyCoachDto {
+  /** Defaults to the caller's own id. Teachers/admins may pass any studentId. */
+  @ApiPropertyOptional() @IsOptional() @IsString() studentId?: string;
+  /** Scope analysis to a single course (otherwise: all enrolled courses). */
+  @ApiPropertyOptional() @IsOptional() @IsString() courseId?: string;
+  @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
+}
+
+/**
+ * Teacher-only analytics across an entire course: which students are at
+ * risk of failing, what topics the whole class is struggling with, and
+ * who's excelling.
+ */
+export class ClassInsightsDto {
+  @ApiProperty() @IsString() @IsNotEmpty() courseId: string;
+  @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
+}

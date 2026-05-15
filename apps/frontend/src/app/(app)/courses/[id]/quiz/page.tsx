@@ -2,10 +2,11 @@
 
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Sparkles, RotateCcw, Trophy, Brain, ArrowRight } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Sparkles, RotateCcw, Trophy, Brain, ArrowRight, Save } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useMe } from '@/hooks/use-auth';
-import type { AiQuiz, QuizQuestion } from '@/lib/types';
+import type { AiQuiz, QuizQuestion, SavedQuiz } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,7 @@ import { DsProgress } from '@/components/ds/progress';
 import { SuggestionStrip } from '@/components/ai/suggestion-strip';
 import { GenerationPanel, type GenStep } from '@/components/ai/generation-panel';
 import { QuizQuestionPreview } from '@/components/ai/quiz-question-preview';
+import { QuizLibrary } from '@/components/quiz/quiz-library';
 import { cn } from '@/lib/utils';
 
 type QuizMode = 'config' | 'generating' | 'quiz' | 'results';
@@ -29,18 +31,78 @@ export default function QuizPage() {
   const { data: user } = useMe();
   const t = useT();
   const { lang } = useLanguage();
+  const qc = useQueryClient();
 
   const [topic, setTopic] = useState('');
   const [count, setCount] = useState('5');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
   const [quiz, setQuiz] = useState<AiQuiz | null>(null);
+  // When set, the quiz came from a saved record — disable "Save to library" button
+  const [loadedFromLibraryId, setLoadedFromLibraryId] = useState<string | null>(null);
   const [mode, setMode] = useState<QuizMode>('config');
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [current, setCurrent] = useState(0);
   const [steps, setSteps] = useState<GenStep[]>([]);
 
   const isTeacher = user?.role === 'TEACHER' || user?.role === 'ADMIN';
+
+  // Save the currently-displayed AI-generated quiz into the persistent library
+  // so the teacher can publish it for students later. The default title is
+  // derived from the topic the teacher entered.
+  const saveAiQuiz = useMutation({
+    mutationFn: async () => {
+      if (!quiz) throw new Error('No quiz');
+      await api.post(`/courses/${id}/quizzes`, {
+        title: topic || t.courseQuiz.title,
+        description: '',
+        source: 'AI_GENERATED',
+        isPublished: false,
+        secondsPerQuestion: 30,
+        questions: quiz.questions.map((q) => ({
+          question: q.question,
+          options: q.options,
+          correctIndex: q.correctIndex,
+          explanation: q.explanation,
+          points: 100,
+        })),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['quizzes', id] });
+      toast({ title: t.courseQuiz.savedToLibrary });
+      setLoadedFromLibraryId('saved'); // disable button
+    },
+    onError: (e: Error) => toast({ title: t.common.error, description: e.message, variant: 'destructive' }),
+  });
+
+  // Open a saved quiz from the library — fetch its questions and jump into play mode
+  const handlePlaySaved = async (quizId: string) => {
+    try {
+      const saved = await api.get<SavedQuiz>(`/quizzes/${quizId}`);
+      if (!saved.questions?.length) {
+        toast({ title: t.courseQuiz.emptyQuizError, variant: 'destructive' });
+        return;
+      }
+      // Students get correctIndex=-1; reveal logic only matters at submission time.
+      // For local play, we still need the index for scoring — teachers/admins get it.
+      setQuiz({
+        questions: saved.questions.map((q) => ({
+          question: q.question,
+          options: q.options,
+          correctIndex: q.correctIndex,
+          explanation: q.explanation,
+        })),
+      });
+      setLoadedFromLibraryId(quizId);
+      setTopic(saved.title);
+      setAnswers({});
+      setCurrent(0);
+      setMode('quiz');
+    } catch (e: any) {
+      toast({ title: t.common.error, description: e.message, variant: 'destructive' });
+    }
+  };
   const difficultyLabel = {
     easy: t.courseQuiz.easy,
     medium: t.courseQuiz.medium,
@@ -83,6 +145,7 @@ export default function QuizPage() {
         )
       );
       setQuiz(result);
+      setLoadedFromLibraryId(null); // fresh AI generation — Save button enabled
       setAnswers({});
       setCurrent(0);
       // small delay to let user see all steps complete
@@ -114,6 +177,7 @@ export default function QuizPage() {
   const handleReset = () => {
     setMode('config');
     setQuiz(null);
+    setLoadedFromLibraryId(null);
     setAnswers({});
     setCurrent(0);
     setSteps([]);
@@ -138,6 +202,11 @@ export default function QuizPage() {
             {isTeacher ? t.courseQuiz.teacherSubtitle : t.courseQuiz.studentSubtitle}
           </p>
         </div>
+
+        {/* Saved quiz library — visible to everyone; teachers can edit/publish/delete */}
+        {mode === 'config' && (
+          <QuizLibrary courseId={id} isTeacher={isTeacher} onPlay={handlePlaySaved} />
+        )}
 
         {mode === 'generating' ? (
           <GenerationPanel title="Generating quiz" steps={steps} />
@@ -274,6 +343,20 @@ export default function QuizPage() {
             />
           ))}
         </div>
+
+        {/* Teacher-only: persist this AI-generated quiz to the library */}
+        {isTeacher && !loadedFromLibraryId && (
+          <Button
+            variant="primary"
+            size="lg"
+            className="w-full"
+            onClick={() => saveAiQuiz.mutate()}
+            disabled={saveAiQuiz.isPending}
+          >
+            <Save className="h-3.5 w-3.5" />
+            {saveAiQuiz.isPending ? t.courseQuiz.saving : t.courseQuiz.saveToLibrary}
+          </Button>
+        )}
 
         <Button variant="secondary" size="lg" className="w-full" onClick={handleReset}>
           <RotateCcw className="h-3.5 w-3.5" />

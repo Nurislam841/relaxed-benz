@@ -80,6 +80,9 @@ export function Topbar() {
   const { data: uc } = useQuery<number>({
     queryKey: ['nc'],
     queryFn: () => api.get<number>('/me/notifications/unread-count'),
+    // SSE is primary, polling is fallback if the stream drops or fails to connect
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   return (

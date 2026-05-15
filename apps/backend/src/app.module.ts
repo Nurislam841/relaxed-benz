@@ -19,6 +19,8 @@ import { ActivityLogModule } from './activity-log/activity-log.module';
 import { AdminModule } from './admin/admin.module';
 import { MailModule } from './mail/mail.module';
 import { AiModule } from './ai/ai.module';
+import { QuizModule } from './quiz/quiz.module';
+import { KahootModule } from './kahoot/kahoot.module';
 
 @Module({
   imports: [
@@ -27,6 +29,7 @@ import { AiModule } from './ai/ai.module';
     EnrollmentsModule, AnnouncementsModule, AssignmentsModule, GradesModule,
     ScheduleModule, NotificationsModule, MaterialsModule, AttendanceModule,
     SearchModule, ActivityLogModule, AdminModule, MailModule, AiModule,
+    QuizModule, KahootModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -1,6 +1,6 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateScheduleItemDto } from './schedule.dto';
+import { CreateScheduleItemDto, UpdateScheduleItemDto } from './schedule.dto';
 import { Role, CourseRole } from '@prisma/client';
 
 @Injectable()
@@ -37,5 +37,77 @@ export class ScheduleService {
       this.db.assignment.findMany({ where: { ...cw, dueAt: { gte: from, lte: to } }, include: { course: { select: { id: true, code: true, title: true } } }, orderBy: { dueAt: 'asc' } }),
     ]);
     return { scheduleItems: si, assignments: as };
+  }
+
+  /**
+   * Admin/teacher full list view used by the new `/admin/schedule` editor.
+   * Supports optional filtering by course or group, returns everything
+   * ordered chronologically with both course and group joined in.
+   */
+  async listAll(filter: { courseId?: string; groupId?: string } = {}) {
+    const where: any = {};
+    if (filter.courseId) where.courseId = filter.courseId;
+    if (filter.groupId) where.groupId = filter.groupId;
+    return this.db.scheduleItem.findMany({
+      where,
+      include: {
+        course: { select: { id: true, code: true, title: true } },
+        group: { select: { id: true, name: true } },
+      },
+      orderBy: { startsAt: 'asc' },
+    });
+  }
+
+  async update(id: string, dto: UpdateScheduleItemDto, user: { id: string; role: Role }) {
+    const item = await this.db.scheduleItem.findUnique({
+      where: { id },
+      include: { course: { select: { teacherId: true } } },
+    });
+    if (!item) throw new NotFoundException('Schedule item not found');
+
+    if (user.role === Role.TEACHER) {
+      // Teachers may only modify schedule items for courses they teach.
+      const isCourseTeacher = item.course?.teacherId === user.id;
+      const isEnrolledTeacher = await this.db.enrollment.findFirst({
+        where: { userId: user.id, courseId: item.courseId, roleInCourse: CourseRole.TEACHER },
+      });
+      if (!isCourseTeacher && !isEnrolledTeacher) throw new ForbiddenException('Not teacher of this course');
+    }
+
+    const data: any = {};
+    if (dto.startsAt !== undefined) data.startsAt = new Date(dto.startsAt);
+    if (dto.endsAt !== undefined) data.endsAt = new Date(dto.endsAt);
+    if (dto.room !== undefined) data.room = dto.room;
+    if (dto.type !== undefined) data.type = dto.type;
+    if (dto.groupId !== undefined) data.groupId = dto.groupId || null;
+
+    return this.db.scheduleItem.update({
+      where: { id },
+      data,
+      include: {
+        course: { select: { id: true, code: true, title: true } },
+        group: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async remove(id: string, user: { id: string; role: Role }) {
+    const item = await this.db.scheduleItem.findUnique({
+      where: { id },
+      include: { course: { select: { teacherId: true } } },
+    });
+    if (!item) throw new NotFoundException('Schedule item not found');
+
+    if (user.role === Role.TEACHER) {
+      const isCourseTeacher = item.course?.teacherId === user.id;
+      const isEnrolledTeacher = await this.db.enrollment.findFirst({
+        where: { userId: user.id, courseId: item.courseId, roleInCourse: CourseRole.TEACHER },
+      });
+      if (!isCourseTeacher && !isEnrolledTeacher) throw new ForbiddenException('Not teacher of this course');
+    }
+
+    // Soft delete via PrismaService middleware — record stays in DB with deletedAt set.
+    await this.db.scheduleItem.delete({ where: { id } });
+    return { deleted: true };
   }
 }

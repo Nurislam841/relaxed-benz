@@ -97,7 +97,7 @@ export default function LoginPage() {
               { icon: Sparkles, label: lp.featureAi },
               { icon: BarChart3, label: lp.featureInsights },
             ].map(({ icon: Icon, label }) => (
-              <div key={label} className="flex flex-col items-start gap-2">
+              <div key={label} className="flex flex-col items-center gap-2">
                 <div
                   className="h-10 w-10 rounded-[10px] flex items-center justify-center border"
                   style={{

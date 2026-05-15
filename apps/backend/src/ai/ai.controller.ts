@@ -6,7 +6,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AiService } from './ai.service';
-import { AssignmentFeedbackDto, GenerateQuizDto, CourseSummaryDto, StudentAnalysisDto, ChatMessageDto } from './ai.dto';
+import { AssignmentFeedbackDto, GenerateQuizDto, CourseSummaryDto, StudentAnalysisDto, ChatMessageDto, StudyCoachDto, ClassInsightsDto } from './ai.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
 
@@ -48,11 +48,28 @@ export class AiController {
 
   @Post('student-analysis')
   @HttpCode(200)
-  @ApiOperation({ summary: 'AI analysis of student performance (teacher/admin or own student)' })
+  @ApiOperation({ summary: '[Deprecated] AI analysis of student performance. Use /ai/study-coach instead.' })
   @ApiResponse({ status: 200, description: 'Analysis with strengths, areasToImprove, recommendations, riskLevel. _demo:true when no LLM key.' })
   @ApiResponse({ status: 403, description: 'Student accessing another student\'s analysis' })
   studentAnalysis(@Body() dto: StudentAnalysisDto, @CurrentUser() user: any) {
     return this.svc.getStudentAnalysis(dto, user.id, user.role);
+  }
+
+  @Post('study-coach')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Personal AI Study Coach: predicted grade trajectory + study plan + mistake patterns' })
+  @ApiResponse({ status: 200, description: 'trajectory{}, weaknesses[], studyPlan[], mistakePatterns[]. _demo:true when no LLM key.' })
+  studyCoach(@Body() dto: StudyCoachDto, @CurrentUser() user: any) {
+    return this.svc.getStudyCoach(dto, user.id, user.role);
+  }
+
+  @Post('class-insights')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Teacher-only: at-risk students + class weakness map + high performers (course-wide)' })
+  @ApiResponse({ status: 200, description: 'atRiskStudents[], classWeaknesses[], highPerformers[]. _demo:true when no LLM key.' })
+  @ApiResponse({ status: 403, description: 'Students cannot view class insights' })
+  classInsights(@Body() dto: ClassInsightsDto, @CurrentUser() user: any) {
+    return this.svc.getClassInsights(dto, user.id, user.role);
   }
 
   @Post('chat')

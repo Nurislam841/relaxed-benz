@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Calendar, BookOpen, CalendarDays, Bell, User as UI,
   Shield, Users, Layers, GraduationCap, UserPlus, ChevronDown, Menu, X, Search, Activity,
-  Sparkles,
+  Sparkles, Radio,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMe } from '@/hooks/use-auth';
@@ -25,6 +25,7 @@ const MAIN_GROUP: NavItem[] = [
 
 const SECONDARY_GROUP: NavItem[] = [
   { href: '/ai-analysis', key: 'aiAnalysis', icon: Sparkles },
+  { href: '/kahoot/play', key: 'joinLive', icon: Radio },
   { href: '/search', key: 'search', icon: Search },
   { href: '/notifications', key: 'notifications', icon: Bell },
   { href: '/activity', key: 'activity', icon: Activity },
@@ -37,6 +38,7 @@ const ADMIN_GROUP: NavItem[] = [
   { href: '/admin/groups', key: 'adminGroups', icon: Layers },
   { href: '/admin/courses', key: 'adminCourses', icon: BookOpen },
   { href: '/admin/enrollments', key: 'adminEnroll', icon: UserPlus },
+  { href: '/admin/schedule', key: 'adminSchedule', icon: Calendar },
 ];
 
 export function Sidebar() {

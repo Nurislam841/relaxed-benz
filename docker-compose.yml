@@ -24,6 +24,8 @@ services:
     restart: unless-stopped
     ports:
       - "4000:4000"
+    env_file:
+      - ./apps/backend/.env
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/unilms?schema=public
       JWT_SECRET: change-me-super-secret-jwt-key-at-least-32-chars
@@ -31,6 +33,11 @@ services:
       JWT_EXPIRATION: 15m
       JWT_REFRESH_EXPIRATION: 7d
       LLM_API_KEY: ${LLM_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     depends_on:
       postgres:
         condition: service_healthy
