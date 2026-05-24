@@ -63,8 +63,12 @@ services:
         generateValue: true
       - key: TELEGRAM_LINK_SECRET
         generateValue: true
+      # Telegram restricts secret_token to [A-Za-z0-9_-] and Render's
+      # `generateValue` produces base64 (includes `+/=` which Telegram rejects
+      # with 400 Bad Request). Mark sync:false so you paste a hex string
+      # manually — `openssl rand -hex 32` or any 32-64 char A-Za-z0-9 value.
       - key: TELEGRAM_WEBHOOK_SECRET
-        generateValue: true
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false # paste manually
       - key: LLM_API_KEY
