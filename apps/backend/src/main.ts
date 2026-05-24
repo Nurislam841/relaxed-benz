@@ -17,10 +17,16 @@ async function bootstrap() {
   app.use(helmet());
   const JWT_SECRET = process.env.JWT_SECRET || 'change-me-super-secret-jwt-key-at-least-32-chars';
   app.use('/uploads', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const token = req.cookies?.['access_token'] || (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : undefined);
+    const token =
+      req.cookies?.['access_token'] ||
+      (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : undefined);
     if (!token) return res.status(401).json({ statusCode: 401, message: 'Unauthorized' });
-    try { verify(token, JWT_SECRET); next(); }
-    catch { return res.status(401).json({ statusCode: 401, message: 'Unauthorized' }); }
+    try {
+      verify(token, JWT_SECRET);
+      next();
+    } catch {
+      return res.status(401).json({ statusCode: 401, message: 'Unauthorized' });
+    }
   });
   app.use('/uploads', express.static(join(__dirname, '..', 'uploads')));
   app.enableCors({ origin: true, credentials: true });
@@ -43,10 +49,13 @@ async function bootstrap() {
     .addTag('Activity Log')
     .build();
   SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, cfg));
-  const server = await app.listen(4000);
+  // Render / Railway / Fly inject $PORT — fall back to 4000 for local dev so
+  // existing scripts and docker-compose mappings keep working.
+  const port = parseInt(process.env.PORT || '4000', 10);
+  const server = await app.listen(port);
   // Increase timeouts for long-running AI requests (quiz generation can take 60s+)
   server.headersTimeout = 300000; // 5 minutes
   server.requestTimeout = 300000;
-  console.log('Backend running on http://localhost:4000');
+  console.log(`Backend running on http://localhost:${port}`);
 }
 bootstrap();

@@ -1,0 +1,116 @@
+# Render Blueprint — one-shot infrastructure-as-code for UniLMS.
+#
+# Open https://dashboard.render.com/blueprints, click "New Blueprint", select
+# this repo (branch olzhas/relaxed-benz), and Render will create:
+#   - Postgres database
+#   - Backend web service (Docker)
+#   - Frontend web service (Docker)
+#
+# Most env vars are flagged `sync: false` so Render doesn't try to seed them
+# from the blueprint — you'll paste secrets into the dashboard UI after the
+# Blueprint creates each service.
+#
+# Heads-up about Free plan: web services SUSPEND after 15 minutes with no
+# inbound traffic. The bot needs to be reachable for Telegram webhooks; the
+# easy fix is a cron-job.org ping to /api/health every 10 minutes (covered
+# in DEPLOY.md). Or upgrade backend to Starter ($7/mo) and it stays awake.
+
+databases:
+  - name: unilms-db
+    databaseName: unilms
+    user: unilms
+    plan: free # 90-day free Postgres; convert to $7/mo Starter after
+    region: frankfurt # closest to KZ/CIS; change to oregon/singapore if preferred
+
+services:
+  # ── Backend (NestJS) ─────────────────────────────────────────────────────
+  - type: web
+    name: unilms-backend
+    runtime: docker
+    plan: free # OK with keep-alive ping; bump to starter for prod
+    region: frankfurt
+    rootDir: apps/backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./
+    healthCheckPath: /api/health
+    autoDeploy: true
+    branch: olzhas/relaxed-benz
+    envVars:
+      # Render injects $PORT — main.ts now reads it.
+      - key: NODE_ENV
+        value: production
+      - key: JWT_EXPIRATION
+        value: 15m
+      - key: JWT_REFRESH_EXPIRATION
+        value: 7d
+      - key: TELEGRAM_MODE
+        value: webhook # polling also works on free + cron — see DEPLOY.md
+      - key: TELEGRAM_BOT_USERNAME
+        value: uni_lms_bot
+      - key: STORAGE_MODE
+        value: s3
+      - key: S3_REGION
+        value: auto
+      # DATABASE_URL — linked from the Postgres service above.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: unilms-db
+          property: connectionString
+      # Secrets — paste in Render dashboard after the blueprint creates the service.
+      - key: JWT_SECRET
+        generateValue: true # Render generates a strong random secret once
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: TELEGRAM_LINK_SECRET
+        generateValue: true
+      - key: TELEGRAM_WEBHOOK_SECRET
+        generateValue: true
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false # paste manually
+      - key: LLM_API_KEY
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_PUBLIC_URL
+        sync: false
+      # BACKEND_PUBLIC_URL / FRONTEND_URL — populated below from service URLs
+      - key: BACKEND_PUBLIC_URL
+        fromService:
+          type: web
+          name: unilms-backend
+          property: host
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: unilms-frontend
+          property: host
+
+  # ── Frontend (Next.js) ───────────────────────────────────────────────────
+  - type: web
+    name: unilms-frontend
+    runtime: docker
+    plan: free
+    region: frankfurt
+    rootDir: apps/frontend
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./
+    autoDeploy: true
+    branch: olzhas/relaxed-benz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # NEXT_PUBLIC_API_URL has to be a full URL with scheme + /api path.
+      # Render's `fromService` returns just the hostname, no scheme/path, and
+      # there's no way to concatenate in render.yaml. So we set this manually
+      # in the dashboard once the backend is deployed:
+      #   NEXT_PUBLIC_API_URL=https://unilms-backend.onrender.com/api
+      # Next.js bakes NEXT_PUBLIC_* into the bundle at build time — after
+      # pasting this, trigger a manual redeploy of the frontend.
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
