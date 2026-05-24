@@ -23,9 +23,9 @@ identical — finish that first if you haven't.
 2. **Connect a repository** → pick `Olzhik06/relaxed-benz`
 3. **Branch**: `olzhas/relaxed-benz`
 4. Render reads `render.yaml` and shows you the 3 services it's about to create:
-   - `unilms-db` (Postgres, free 90 days)
-   - `unilms-backend` (web service, Docker)
-   - `unilms-frontend` (web service, Docker)
+   - `aitu-unilms-db` (Postgres, free 90 days)
+   - `aitu-unilms-backend` (web service, Docker)
+   - `aitu-unilms-frontend` (web service, Docker)
 5. Click **Apply**
 6. Render starts creating things — this takes 5-8 minutes (first Docker build is slow)
 
@@ -57,11 +57,11 @@ Click **Save Changes** at the bottom. Render will redeploy the service automatic
 
 Open **unilms-frontend** → **Environment** tab. Render needs the backend's public URL here.
 
-Look up the backend service's URL — top of its dashboard, looks like `https://unilms-backend.onrender.com`. Then in the frontend's env vars:
+Look up the backend service's URL — top of its dashboard, looks like `https://aitu-unilms-backend.onrender.com`. Then in the frontend's env vars:
 
-| Key                   | Value                                     |
-| --------------------- | ----------------------------------------- |
-| `NEXT_PUBLIC_API_URL` | `https://unilms-backend.onrender.com/api` |
+| Key                   | Value                                          |
+| --------------------- | ---------------------------------------------- |
+| `NEXT_PUBLIC_API_URL` | `https://aitu-unilms-backend.onrender.com/api` |
 
 Click **Save Changes**, then in the top-right click **Manual Deploy** → **Deploy latest commit**. (Next.js bakes `NEXT_PUBLIC_*` into the bundle at build time, so it needs a rebuild for the new value.)
 
@@ -70,15 +70,15 @@ Click **Save Changes**, then in the top-right click **Manual Deploy** → **Depl
 ## Part 4 — Verify
 
 1. Open the frontend URL — should load the LMS landing page
-2. Open `https://unilms-backend.onrender.com/api/docs` — Swagger UI
+2. Open `https://aitu-unilms-backend.onrender.com/api/docs` — Swagger UI
 3. Open backend service → **Logs** tab. Look for:
    - `[StorageService] Storage initialised in "s3" mode (bucket=unilms-uploads)` ← R2 wired up
-   - `[TelegramWebhookController] Telegram webhook registered at https://unilms-backend.onrender.com/api/telegram/webhook` ← bot inbound ready
+   - `[TelegramWebhookController] Telegram webhook registered at https://aitu-unilms-backend.onrender.com/api/telegram/webhook` ← bot inbound ready
 4. Check Telegram acknowledged the webhook:
    ```
    curl https://api.telegram.org/bot<YOUR_TOKEN>/getWebhookInfo
    ```
-   Should return `"url":"https://unilms-backend.onrender.com/api/telegram/webhook"`.
+   Should return `"url":"https://aitu-unilms-backend.onrender.com/api/telegram/webhook"`.
 
 ---
 
@@ -94,7 +94,7 @@ every 10 minutes.
 1. Open https://cron-job.org and sign up (free, no card)
 2. Click **CREATE CRONJOB**
 3. **Title**: `unilms-keep-alive`
-4. **URL**: `https://unilms-backend.onrender.com/api/health`
+4. **URL**: `https://aitu-unilms-backend.onrender.com/api/health`
 5. **Schedule**: every 10 minutes
 6. **Save**
 7. Hit **Run now** once to verify — should return 200 with `{ "status": "ok" }`
@@ -109,8 +109,8 @@ down between pings, and Telegram won't time out webhook deliveries.
 Now jump to [SMOKE-TEST.md](SMOKE-TEST.md) §1 and walk through all sections.
 URLs in the doc need substitution:
 
-- `https://unilms-backend.../api/...` → `https://unilms-backend.onrender.com/api/...`
-- `https://unilms-frontend...` → `https://unilms-frontend.onrender.com`
+- `https://unilms-backend.../api/...` → `https://aitu-unilms-backend.onrender.com/api/...`
+- `https://unilms-frontend...` → `https://aitu-unilms-frontend.onrender.com`
 
 ---
 

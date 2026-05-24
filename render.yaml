@@ -16,7 +16,7 @@
 # in DEPLOY.md). Or upgrade backend to Starter ($7/mo) and it stays awake.
 
 databases:
-  - name: unilms-db
+  - name: aitu-unilms-db
     databaseName: unilms
     user: unilms
     plan: free # 90-day free Postgres; convert to $7/mo Starter after
@@ -25,7 +25,7 @@ databases:
 services:
   # ── Backend (NestJS) ─────────────────────────────────────────────────────
   - type: web
-    name: unilms-backend
+    name: aitu-unilms-backend
     runtime: docker
     plan: free # OK with keep-alive ping; bump to starter for prod
     region: frankfurt
@@ -54,7 +54,7 @@ services:
       # DATABASE_URL — linked from the Postgres service above.
       - key: DATABASE_URL
         fromDatabase:
-          name: unilms-db
+          name: aitu-unilms-db
           property: connectionString
       # Secrets — paste in Render dashboard after the blueprint creates the service.
       - key: JWT_SECRET
@@ -83,17 +83,17 @@ services:
       - key: BACKEND_PUBLIC_URL
         fromService:
           type: web
-          name: unilms-backend
+          name: aitu-unilms-backend
           property: host
       - key: FRONTEND_URL
         fromService:
           type: web
-          name: unilms-frontend
+          name: aitu-unilms-frontend
           property: host
 
   # ── Frontend (Next.js) ───────────────────────────────────────────────────
   - type: web
-    name: unilms-frontend
+    name: aitu-unilms-frontend
     runtime: docker
     plan: free
     region: frankfurt
