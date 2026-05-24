@@ -1,0 +1,15 @@
+# Railway service config — picked up automatically when this file is in the
+# service's Root Directory. Tells Railpack to skip auto-detection and use our
+# Dockerfile, plus wires up the healthcheck so Railway can tell when the
+# backend is genuinely ready (not just "process started").
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "./docker-entrypoint.sh"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

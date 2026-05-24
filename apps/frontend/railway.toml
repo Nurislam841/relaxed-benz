@@ -1,0 +1,10 @@
+# See apps/backend/railway.toml — same rationale.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "pnpm start -p ${PORT:-3000}"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
