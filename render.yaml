@@ -83,17 +83,17 @@ services:
         sync: false
       - key: S3_PUBLIC_URL
         sync: false
-      # BACKEND_PUBLIC_URL / FRONTEND_URL — populated below from service URLs
+      # BACKEND_PUBLIC_URL / FRONTEND_URL
+      # Render's `fromService: property: host` returns the **internal** host
+      # (srv-xxxxx) used for service-to-service communication, not the public
+      # *.onrender.com domain. Telegram setWebhook needs the public URL or it
+      # fails with "Failed to resolve host". So we paste manually:
+      #   BACKEND_PUBLIC_URL=https://aitu-unilms-backend.onrender.com
+      #   FRONTEND_URL=https://aitu-unilms-frontend.onrender.com
       - key: BACKEND_PUBLIC_URL
-        fromService:
-          type: web
-          name: aitu-unilms-backend
-          property: host
+        sync: false
       - key: FRONTEND_URL
-        fromService:
-          type: web
-          name: aitu-unilms-frontend
-          property: host
+        sync: false
 
   # ── Frontend (Next.js) ───────────────────────────────────────────────────
   - type: web

@@ -51,6 +51,12 @@ export class TelegramWebhookController implements OnModuleInit, OnModuleDestroy 
     const publicUrl = getBackendPublicUrl();
     const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET;
 
+    // Diagnostic log — surfaces config issues immediately. Useful when the
+    // env var is wrong (internal host, missing scheme, trailing newline etc.)
+    this.logger.log(
+      `Telegram bot lifecycle: mode=${mode}, publicUrl=${publicUrl ?? '(unset)'}, hasSecret=${!!secretToken}`,
+    );
+
     if (mode === 'webhook') {
       if (!publicUrl) {
         this.logger.warn(
