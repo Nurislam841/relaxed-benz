@@ -21,18 +21,59 @@ import { MailModule } from './mail/mail.module';
 import { AiModule } from './ai/ai.module';
 import { QuizModule } from './quiz/quiz.module';
 import { KahootModule } from './kahoot/kahoot.module';
+import { PlagiarismModule } from './plagiarism/plagiarism.module';
+import { HealthModule } from './health/health.module';
+import { CalendarExportModule } from './calendar-export/calendar-export.module';
+import { AchievementsModule } from './achievements/achievements.module';
+import { TwoFactorModule } from './two-factor/two-factor.module';
+import { PdfReportsModule } from './pdf-reports/pdf-reports.module';
+import { TelegramModule } from './telegram/telegram.module';
+import { StorageModule } from './storage/storage.module';
+import { ScheduleModule as NestScheduleModule } from '@nestjs/schedule';
+
+// Jest sets JEST_WORKER_ID automatically. Under tests we raise the throttle
+// ceiling massively so chained register/login calls across 12 spec files
+// don't hit per-route limits (which would mask real failures with 429s).
+const TEST_MODE = !!process.env.JEST_WORKER_ID;
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
-    PrismaModule, AuthModule, UsersModule, GroupsModule, CoursesModule,
-    EnrollmentsModule, AnnouncementsModule, AssignmentsModule, GradesModule,
-    ScheduleModule, NotificationsModule, MaterialsModule, AttendanceModule,
-    SearchModule, ActivityLogModule, AdminModule, MailModule, AiModule,
-    QuizModule, KahootModule,
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: TEST_MODE ? 10000 : 100 }]),
+    NestScheduleModule.forRoot(), // @nestjs/schedule — for cron-based Telegram reminders (Phase 3)
+    StorageModule, // @Global — disk/S3 file storage, used by uploads + Telegram photo submissions
+    TelegramModule, // @Global — must be imported once at root
+    PrismaModule,
+    AuthModule,
+    UsersModule,
+    GroupsModule,
+    CoursesModule,
+    EnrollmentsModule,
+    AnnouncementsModule,
+    AssignmentsModule,
+    GradesModule,
+    ScheduleModule,
+    NotificationsModule,
+    MaterialsModule,
+    AttendanceModule,
+    SearchModule,
+    ActivityLogModule,
+    AdminModule,
+    MailModule,
+    AiModule,
+    QuizModule,
+    KahootModule,
+    PlagiarismModule,
+    HealthModule,
+    CalendarExportModule,
+    AchievementsModule,
+    TwoFactorModule,
+    PdfReportsModule,
   ],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Skip rate-limiting entirely under Jest. Per-route @Throttle() decorators
+    // (5/min on login, 3/min on register, etc.) would otherwise cap chained
+    // beforeAll setups across spec files that share an IP.
+    ...(TEST_MODE ? [] : [{ provide: APP_GUARD, useClass: ThrottlerGuard }]),
   ],
 })
 export class AppModule {}

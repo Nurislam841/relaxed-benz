@@ -5,9 +5,25 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, Calendar, BookOpen, CalendarDays, Bell, User as UI,
-  Shield, Users, Layers, GraduationCap, UserPlus, ChevronDown, Menu, X, Search, Activity,
-  Sparkles, Radio,
+  LayoutDashboard,
+  Calendar,
+  BookOpen,
+  CalendarDays,
+  Bell,
+  User as UI,
+  Shield,
+  Users,
+  Layers,
+  GraduationCap,
+  UserPlus,
+  ChevronDown,
+  Menu,
+  X,
+  Search,
+  Activity,
+  Sparkles,
+  Radio,
+  Trophy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMe } from '@/hooks/use-auth';
@@ -26,6 +42,7 @@ const MAIN_GROUP: NavItem[] = [
 const SECONDARY_GROUP: NavItem[] = [
   { href: '/ai-analysis', key: 'aiAnalysis', icon: Sparkles },
   { href: '/kahoot/play', key: 'joinLive', icon: Radio },
+  { href: '/achievements', key: 'achievements', icon: Trophy },
   { href: '/search', key: 'search', icon: Search },
   { href: '/notifications', key: 'notifications', icon: Bell },
   { href: '/activity', key: 'activity', icon: Activity },
@@ -49,8 +66,7 @@ export function Sidebar() {
   const [adminOpen, setAdminOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const isActive = (h: string) =>
-    path === h || (h !== '/dashboard' && h !== '/admin' && path.startsWith(h + '/'));
+  const isActive = (h: string) => path === h || (h !== '/dashboard' && h !== '/admin' && path.startsWith(h + '/'));
 
   const roleLabel = user?.role
     ? {
@@ -73,15 +89,12 @@ export function Sidebar() {
             'transition-colors duration-ds-fast ease-ds-out',
             active
               ? 'bg-[var(--accent-100)] text-[var(--accent-700)] dark:bg-[var(--accent-50)]'
-              : 'text-[var(--fg-muted)] hover:bg-[var(--bg-muted)] hover:text-[var(--fg)]'
+              : 'text-[var(--fg-muted)] hover:bg-[var(--bg-muted)] hover:text-[var(--fg)]',
           )}
         >
           <span
             aria-hidden
-            className={cn(
-              'w-1 h-1 rounded-full shrink-0',
-              active ? 'bg-[var(--accent-500)]' : 'bg-[var(--fg-subtle)]'
-            )}
+            className={cn('w-1 h-1 rounded-full shrink-0', active ? 'bg-[var(--accent-500)]' : 'bg-[var(--fg-subtle)]')}
           />
           <i.icon className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">{(t.nav as any)[i.key]}</span>
@@ -112,9 +125,7 @@ export function Sidebar() {
             />
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="font-serif italic text-[20px] tracking-[-0.01em] text-[var(--fg)]">
-              UniLMS
-            </span>
+            <span className="font-serif italic text-[20px] tracking-[-0.01em] text-[var(--fg)]">UniLMS</span>
             <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--fg-subtle)]">
               Learning OS
             </span>
@@ -122,27 +133,18 @@ export function Sidebar() {
         </Link>
       </div>
 
-      <motion.nav
-        variants={stagger}
-        initial="hidden"
-        animate="visible"
-        className="flex-1 px-3 pb-4 overflow-y-auto"
-      >
+      <motion.nav variants={stagger} initial="hidden" animate="visible" className="flex-1 px-3 pb-4 overflow-y-auto">
         {/* Main group */}
         <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--fg-subtle)] px-3 mb-1.5">
           {t.nav.workspace ?? 'Workspace'}
         </div>
-        <div className="space-y-px mb-5">
-          {MAIN_GROUP.map(renderItem)}
-        </div>
+        <div className="space-y-px mb-5">{MAIN_GROUP.map(renderItem)}</div>
 
         {/* Secondary */}
         <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--fg-subtle)] px-3 mb-1.5">
           {t.nav.activityGroup ?? 'Activity'}
         </div>
-        <div className="space-y-px mb-5">
-          {SECONDARY_GROUP.map(renderItem)}
-        </div>
+        <div className="space-y-px mb-5">{SECONDARY_GROUP.map(renderItem)}</div>
 
         {user?.role === 'ADMIN' && (
           <>
@@ -154,10 +156,7 @@ export function Sidebar() {
             >
               <span>{t.nav.admin}</span>
               <ChevronDown
-                className={cn(
-                  'h-3 w-3 ml-auto transition-transform duration-ds-base',
-                  adminOpen && 'rotate-180'
-                )}
+                className={cn('h-3 w-3 ml-auto transition-transform duration-ds-base', adminOpen && 'rotate-180')}
               />
             </motion.button>
             <AnimatePresence initial={false}>
@@ -183,15 +182,11 @@ export function Sidebar() {
       {/* User card */}
       <div className="border-t border-[var(--border-color)] px-4 py-3.5">
         <div className="flex items-center gap-3">
-          <div
-            className="h-8 w-8 rounded-full bg-[var(--accent-100)] flex items-center justify-center text-[13px] font-semibold text-[var(--accent-700)] shrink-0"
-          >
+          <div className="h-8 w-8 rounded-full bg-[var(--accent-100)] flex items-center justify-center text-[13px] font-semibold text-[var(--accent-700)] shrink-0">
             {user?.fullName?.charAt(0)?.toUpperCase() ?? '?'}
           </div>
           <div className="min-w-0">
-            <p className="text-[13px] font-medium truncate leading-tight text-[var(--fg)]">
-              {user?.fullName}
-            </p>
+            <p className="text-[13px] font-medium truncate leading-tight text-[var(--fg)]">{user?.fullName}</p>
             <p className="text-[11px] text-[var(--fg-subtle)] font-mono">{roleLabel}</p>
           </div>
         </div>

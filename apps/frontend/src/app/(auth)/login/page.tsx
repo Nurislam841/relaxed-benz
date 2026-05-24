@@ -5,12 +5,14 @@ import { useLogin } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/form-elements';
-import { GraduationCap, Loader2, BookOpen, BarChart3, Sparkles } from 'lucide-react';
+import { GraduationCap, Loader2, BookOpen, BarChart3, Sparkles, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Eyebrow } from '@/components/ds/eyebrow';
 import { HDisplay } from '@/components/ds/h-display';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { loginSchema, formatZodErrors } from '@/lib/validation';
+import { ApiError } from '@/lib/api';
 
 const DEMO = [
   { roleKey: 'roleAdmin', email: 'admin@uni.kz', pass: 'Admin123!' },
@@ -23,16 +25,71 @@ export default function LoginPage() {
   const lp = (t as any).loginPage;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [requires2fa, setRequires2fa] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const login = useLogin();
+
+  const submitWithTotp = (code: string) => {
+    login.mutate(
+      { email, password, totpCode: code },
+      {
+        onError: (err) => {
+          if (err instanceof ApiError && err.body?.requires2fa) {
+            setRequires2fa(true);
+            return;
+          }
+          toast({ title: lp.loginFailed, description: err.message, variant: 'destructive' });
+        },
+      },
+    );
+  };
 
   const go = (e: React.FormEvent) => {
     e.preventDefault();
-    login.mutate({ email, password }, {
-      onError: (err) => toast({ title: lp.loginFailed, description: err.message, variant: 'destructive' }),
-    });
+    if (requires2fa) {
+      if (!/^\d{6}$/.test(totpCode)) {
+        setErrors({ totp: 'Enter the 6-digit code from your authenticator app' });
+        return;
+      }
+      setErrors({});
+      submitWithTotp(totpCode);
+      return;
+    }
+    const parsed = loginSchema.safeParse({ email, password });
+    const fieldErrors = formatZodErrors(parsed);
+    if (fieldErrors) {
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
+    login.mutate(
+      { email, password },
+      {
+        onError: (err) => {
+          if (err instanceof ApiError && err.body?.requires2fa) {
+            setRequires2fa(true);
+            return;
+          }
+          toast({ title: lp.loginFailed, description: err.message, variant: 'destructive' });
+        },
+      },
+    );
   };
 
-  const fill = (e: string, p: string) => { setEmail(e); setPassword(p); };
+  const backToPassword = () => {
+    setRequires2fa(false);
+    setTotpCode('');
+    setErrors({});
+  };
+
+  const fill = (e: string, p: string) => {
+    setEmail(e);
+    setPassword(p);
+    setErrors({});
+    setRequires2fa(false);
+    setTotpCode('');
+  };
 
   return (
     <div className="min-h-screen flex bg-[var(--bg)]">
@@ -72,16 +129,15 @@ export default function LoginPage() {
               }}
             />
           </div>
-          <span className="font-serif italic text-[24px] tracking-[-0.01em] text-[var(--fg)]">
-            UniLMS
-          </span>
+          <span className="font-serif italic text-[24px] tracking-[-0.01em] text-[var(--fg)]">UniLMS</span>
           <Eyebrow className="ml-1">{lp.brand}</Eyebrow>
         </div>
 
         <div className="relative space-y-6">
           <Eyebrow>{lp.tagline}</Eyebrow>
           <HDisplay size="xl">
-            {lp.heroLine1}<br />
+            {lp.heroLine1}
+            <br />
             <em>{lp.heroLine2}</em>
             <br />
             {lp.heroLine3}
@@ -144,53 +200,116 @@ export default function LoginPage() {
               <h2 className="font-serif text-[28px] tracking-[-0.015em] text-[var(--fg)] leading-tight">
                 {lp.welcomeBack}
               </h2>
-              <p className="text-[13px] text-[var(--fg-muted)]">
-                {lp.welcomeBackSubtitle}
-              </p>
+              <p className="text-[13px] text-[var(--fg-muted)]">{lp.welcomeBackSubtitle}</p>
             </div>
           </div>
 
-          <form onSubmit={go} className="space-y-3.5">
-            <div className="space-y-1.5">
-              <Label htmlFor="email">{lp.emailLabel}</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder={lp.emailPlaceholder}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="pw">{lp.passwordLabel}</Label>
-              <Input
-                id="pw"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              className="w-full mt-1"
-              disabled={login.isPending}
-            >
-              {login.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {lp.accessButton}
-            </Button>
+          <form onSubmit={go} noValidate className="space-y-3.5">
+            {!requires2fa ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="email">{lp.emailLabel}</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder={lp.emailPlaceholder}
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (errors.email) setErrors({ ...errors, email: '' });
+                    }}
+                    aria-invalid={!!errors.email}
+                    aria-describedby={errors.email ? 'email-error' : undefined}
+                  />
+                  {errors.email && (
+                    <p id="email-error" className="text-[12px] text-[var(--danger)]">
+                      {errors.email}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="pw">{lp.passwordLabel}</Label>
+                  <Input
+                    id="pw"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (errors.password) setErrors({ ...errors, password: '' });
+                    }}
+                    aria-invalid={!!errors.password}
+                    aria-describedby={errors.password ? 'pw-error' : undefined}
+                  />
+                  {errors.password && (
+                    <p id="pw-error" className="text-[12px] text-[var(--danger)]">
+                      {errors.password}
+                    </p>
+                  )}
+                </div>
+                <Button type="submit" variant="primary" size="lg" className="w-full mt-1" disabled={login.isPending}>
+                  {login.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {lp.accessButton}
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 p-3 rounded-[8px] bg-[var(--bg-subtle)] border border-[var(--border-color)]">
+                  <ShieldCheck className="h-4 w-4 text-[var(--accent-700)]" />
+                  <p className="text-[13px] text-[var(--fg)]">Two-factor authentication is enabled for this account</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="totp">Authenticator code</Label>
+                  <Input
+                    id="totp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="123456"
+                    maxLength={6}
+                    value={totpCode}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, '').slice(0, 6);
+                      setTotpCode(v);
+                      if (errors.totp) setErrors({ ...errors, totp: '' });
+                    }}
+                    autoFocus
+                    aria-invalid={!!errors.totp}
+                    className="font-mono tracking-[0.4em] text-center text-lg"
+                  />
+                  {errors.totp && <p className="text-[12px] text-[var(--danger)]">{errors.totp}</p>}
+                  <p className="text-[11px] text-[var(--fg-muted)]">
+                    Open Google Authenticator, Authy, or 1Password and enter the current 6-digit code.
+                  </p>
+                </div>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  className="w-full mt-1"
+                  disabled={login.isPending || totpCode.length !== 6}
+                >
+                  {login.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Verify and sign in
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full"
+                  onClick={backToPassword}
+                  disabled={login.isPending}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Back to password
+                </Button>
+              </>
+            )}
           </form>
 
           <p className="text-center text-[13px] text-[var(--fg-muted)]">
             {lp.newHere}{' '}
-            <Link
-              href="/register"
-              className="text-[var(--accent-700)] hover:underline font-medium"
-            >
+            <Link href="/register" className="text-[var(--accent-700)] hover:underline font-medium">
               {lp.createAccount}
             </Link>
           </p>
@@ -210,7 +329,7 @@ export default function LoginPage() {
                     'w-full flex items-center justify-between rounded-[7px] px-3 py-2',
                     'bg-[var(--surface)] hover:bg-[var(--bg-muted)]',
                     'border border-[var(--border-color)] hover:border-[var(--accent-300)]',
-                    'transition-colors duration-ds-fast text-left'
+                    'transition-colors duration-ds-fast text-left',
                   )}
                 >
                   <span className="text-[13px] font-medium text-[var(--fg)]">{lp[roleKey]}</span>

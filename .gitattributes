@@ -1,0 +1,10 @@
+# Force LF line endings on shell scripts so they run correctly inside Linux
+# containers regardless of which OS the dev cloned the repo on.
+# Without this, Windows checkout auto-CRLF turns docker-entrypoint.sh into
+# "/bin/sh\r" and Docker's exec fails with "no such file or directory".
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf
+
+# Docker-related text files
+Dockerfile text eol=lf
+*.dockerfile text eol=lf

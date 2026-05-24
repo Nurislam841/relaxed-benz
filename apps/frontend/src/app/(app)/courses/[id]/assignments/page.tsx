@@ -3,7 +3,14 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Assignment, AssignmentResource, Submission, AiFeedback, PaginatedResponse, AssignmentComment } from '@/lib/types';
+import type {
+  Assignment,
+  AssignmentResource,
+  Submission,
+  AiFeedback,
+  PaginatedResponse,
+  AssignmentComment,
+} from '@/lib/types';
 import { useMe } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,19 +19,65 @@ import { Dialog, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { toast } from '@/hooks/use-toast';
 import { formatDateTime, formatDate, cn } from '@/lib/utils';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import {
-  Plus, Clock, Send, Sparkles, CheckCircle2, AlertCircle, Lightbulb,
-  TrendingUp, Award, CalendarClock, ClipboardList, List, GitBranch,
-  Upload, FileUp, Code2, ExternalLink, X, AlignLeft, Brain, Loader2,
-  MessageSquare, ChevronDown, LayoutGrid, Save, Paperclip, File as FileIcon,
-  Image as ImageIcon, Archive, FileText, Trash2, BookOpen,
-  Users, ChevronRight, Eye,
+  Plus,
+  Clock,
+  Send,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  Lightbulb,
+  TrendingUp,
+  Award,
+  CalendarClock,
+  ClipboardList,
+  List,
+  GitBranch,
+  Upload,
+  FileUp,
+  Code2,
+  ExternalLink,
+  X,
+  AlignLeft,
+  Brain,
+  Loader2,
+  MessageSquare,
+  ChevronDown,
+  LayoutGrid,
+  Save,
+  Paperclip,
+  File as FileIcon,
+  Image as ImageIcon,
+  Archive,
+  FileText,
+  Trash2,
+  BookOpen,
+  Users,
+  ChevronRight,
+  Eye,
+  ShieldAlert,
 } from 'lucide-react';
 import { useLanguage, useT } from '@/lib/i18n';
 import { motion, type Variants } from 'framer-motion';
 import { useInView } from 'framer-motion';
 import { Segment } from '@/components/ds/segment';
+import dynamic from 'next/dynamic';
+
+// Markdown editor/view pulls in react-markdown + remark-gfm (~80KB).
+// Only the create-assignment dialog and the text-submission tab use them,
+// both of which are below-the-fold for the initial page render.
+const MarkdownEditor = dynamic(
+  () => import('@/components/markdown/markdown-editor').then((m) => ({ default: m.MarkdownEditor })),
+  {
+    ssr: false,
+    loading: () => <div className="h-32 rounded-md bg-muted/30 animate-pulse" />,
+  },
+);
+const MarkdownView = dynamic(
+  () => import('@/components/markdown/markdown-view').then((m) => ({ default: m.MarkdownView })),
+  { ssr: false },
+);
 
 // ─── Status + urgency ─────────────────────────────────────────────────────────
 
@@ -46,14 +99,44 @@ function getDueUrgency(dueAt: string): DueUrgency {
   return 'normal';
 }
 
-const STATUS_CONFIG: Record<AssignmentStatus, {
-  label: string; icon: React.ElementType;
-  accent: string; badge: string; badgeDark: string;
-}> = {
-  pending:   { label: 'Open',      icon: Clock,        accent: 'bg-emerald-500 dark:bg-emerald-400', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',  badgeDark: 'dark:bg-emerald-500/[0.12] dark:text-emerald-300 dark:border-emerald-500/30' },
-  submitted: { label: 'Submitted', icon: CheckCircle2, accent: 'bg-blue-500 dark:bg-blue-400',       badge: 'bg-blue-50 text-blue-700 border-blue-200',           badgeDark: 'dark:bg-blue-500/[0.12] dark:text-blue-300 dark:border-blue-500/30' },
-  late:      { label: 'Past Due',  icon: AlertCircle,  accent: 'bg-rose-500 dark:bg-rose-400',       badge: 'bg-rose-50 text-rose-700 border-rose-200',           badgeDark: 'dark:bg-rose-500/[0.12] dark:text-rose-300 dark:border-rose-500/30' },
-  graded:    { label: 'Graded',    icon: Award,        accent: 'bg-amber-500 dark:bg-amber-400',     badge: 'bg-amber-50 text-amber-700 border-amber-200',        badgeDark: 'dark:bg-amber-500/[0.12] dark:text-amber-300 dark:border-amber-500/30' },
+const STATUS_CONFIG: Record<
+  AssignmentStatus,
+  {
+    label: string;
+    icon: React.ElementType;
+    accent: string;
+    badge: string;
+    badgeDark: string;
+  }
+> = {
+  pending: {
+    label: 'Open',
+    icon: Clock,
+    accent: 'bg-emerald-500 dark:bg-emerald-400',
+    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    badgeDark: 'dark:bg-emerald-500/[0.12] dark:text-emerald-300 dark:border-emerald-500/30',
+  },
+  submitted: {
+    label: 'Submitted',
+    icon: CheckCircle2,
+    accent: 'bg-blue-500 dark:bg-blue-400',
+    badge: 'bg-blue-50 text-blue-700 border-blue-200',
+    badgeDark: 'dark:bg-blue-500/[0.12] dark:text-blue-300 dark:border-blue-500/30',
+  },
+  late: {
+    label: 'Past Due',
+    icon: AlertCircle,
+    accent: 'bg-rose-500 dark:bg-rose-400',
+    badge: 'bg-rose-50 text-rose-700 border-rose-200',
+    badgeDark: 'dark:bg-rose-500/[0.12] dark:text-rose-300 dark:border-rose-500/30',
+  },
+  graded: {
+    label: 'Graded',
+    icon: Award,
+    accent: 'bg-amber-500 dark:bg-amber-400',
+    badge: 'bg-amber-50 text-amber-700 border-amber-200',
+    badgeDark: 'dark:bg-amber-500/[0.12] dark:text-amber-300 dark:border-amber-500/30',
+  },
 };
 
 // ─── Variants ─────────────────────────────────────────────────────────────────
@@ -64,7 +147,11 @@ const LIST_CONTAINER: Variants = {
 };
 const CARD_ITEM: Variants = {
   hidden: { opacity: 0, y: 14 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+  },
 };
 
 // ─── CommentThread ─────────────────────────────────────────────────────────────
@@ -91,7 +178,7 @@ function CommentThread({ assignmentId, currentUserId }: { assignmentId: string; 
   return (
     <div className="border-t border-border/30 dark:border-white/[0.05]">
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-2 w-full px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 dark:hover:bg-white/[0.03] transition-colors"
       >
         <MessageSquare className="h-3.5 w-3.5" />
@@ -114,7 +201,7 @@ function CommentThread({ assignmentId, currentUserId }: { assignmentId: string; 
         >
           {isLoading ? (
             <div className="space-y-2 pt-1">
-              {[1, 2].map(i => (
+              {[1, 2].map((i) => (
                 <div key={i} className="flex gap-2 items-start">
                   <div className="h-6 w-6 rounded-full bg-muted animate-pulse shrink-0" />
                   <div className="flex-1 space-y-1">
@@ -128,14 +215,16 @@ function CommentThread({ assignmentId, currentUserId }: { assignmentId: string; 
             <p className="text-xs text-muted-foreground/60 py-1 text-center">No comments yet. Start the discussion.</p>
           ) : (
             <div className="space-y-2.5 pt-1">
-              {comments.map(c => (
+              {comments.map((c) => (
                 <div key={c.id} className="flex gap-2.5 items-start">
-                  <div className={cn(
-                    'h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0 mt-0.5',
-                    c.author.role === 'TEACHER' || c.author.role === 'ADMIN'
-                      ? 'bg-primary/10 text-primary'
-                      : 'bg-muted text-muted-foreground',
-                  )}>
+                  <div
+                    className={cn(
+                      'h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0 mt-0.5',
+                      c.author.role === 'TEACHER' || c.author.role === 'ADMIN'
+                        ? 'bg-primary/10 text-primary'
+                        : 'bg-muted text-muted-foreground',
+                    )}
+                  >
                     {c.author.fullName.charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -160,10 +249,10 @@ function CommentThread({ assignmentId, currentUserId }: { assignmentId: string; 
           <div className="flex gap-2 pt-1">
             <input
               value={body}
-              onChange={e => setBody(e.target.value)}
+              onChange={(e) => setBody(e.target.value)}
               placeholder="Add a comment…"
               className="flex-1 text-xs rounded-md border border-border/50 bg-background dark:bg-white/[0.04] px-2.5 py-1.5 outline-none focus:border-primary/50 dark:focus:border-primary/40 placeholder:text-muted-foreground/50"
-              onKeyDown={e => {
+              onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && body.trim()) {
                   e.preventDefault();
                   addComment.mutate(body.trim());
@@ -187,10 +276,20 @@ function CommentThread({ assignmentId, currentUserId }: { assignmentId: string; 
 // ─── AssignmentCard ───────────────────────────────────────────────────────────
 
 function AssignmentCard({
-  assignment, submission, isStu, canC, onSubmit, onAiFeedback, onAiExplain, currentUserId, t,
+  assignment,
+  submission,
+  isStu,
+  canC,
+  onSubmit,
+  onAiFeedback,
+  onAiExplain,
+  currentUserId,
+  t,
 }: {
-  assignment: Assignment; submission?: Submission;
-  isStu: boolean; canC: boolean;
+  assignment: Assignment;
+  submission?: Submission;
+  isStu: boolean;
+  canC: boolean;
   onSubmit: (id: string) => void;
   onAiFeedback: (id: string) => void;
   onAiExplain: (a: Assignment) => void;
@@ -198,7 +297,7 @@ function AssignmentCard({
   t: ReturnType<typeof useT>;
 }) {
   const status = getAssignmentStatus(assignment, submission);
-  const urgency = (status === 'pending' || status === 'late') ? getDueUrgency(assignment.dueAt) : 'normal';
+  const urgency = status === 'pending' || status === 'late' ? getDueUrgency(assignment.dueAt) : 'normal';
   const cfg = STATUS_CONFIG[status];
   const StatusIcon = cfg.icon;
   const ref = useRef<HTMLDivElement>(null);
@@ -212,10 +311,54 @@ function AssignmentCard({
 
   // Teacher: submissions list state
   const [subsOpen, setSubsOpen] = useState(false);
+  const qc = useQueryClient();
   const { data: allSubsList = [], isLoading: subsLoading } = useQuery<Submission[]>({
     queryKey: ['a-subs', assignment.id],
     queryFn: () => api.get(`/assignments/${assignment.id}/submissions`),
     enabled: canC && subsOpen,
+  });
+
+  type PlagiarismReportRow = {
+    id: string;
+    similarity: number;
+    submissionA: { id: string; studentId: string; student: { fullName: string } };
+    submissionB: { id: string; studentId: string; student: { fullName: string } };
+  };
+
+  const { data: plagReports = [] } = useQuery<PlagiarismReportRow[]>({
+    queryKey: ['a-plag', assignment.id],
+    queryFn: () => api.get(`/assignments/${assignment.id}/plagiarism-reports`),
+    enabled: canC && subsOpen,
+  });
+
+  // Index: submissionId → highest match (other student + similarity)
+  const plagBySub = useMemo(() => {
+    const out: Record<string, { otherName: string; pct: number }> = {};
+    for (const r of plagReports) {
+      const aPct = Math.round(r.similarity * 100);
+      const updateIfHigher = (sid: string, otherName: string) => {
+        if (!out[sid] || out[sid].pct < aPct) out[sid] = { otherName, pct: aPct };
+      };
+      updateIfHigher(r.submissionA.id, r.submissionB.student.fullName);
+      updateIfHigher(r.submissionB.id, r.submissionA.student.fullName);
+    }
+    return out;
+  }, [plagReports]);
+
+  const runPlagiarism = useMutation({
+    mutationFn: () =>
+      api.post<{ pairsFound: number; submissionsAnalyzed: number }>(
+        `/assignments/${assignment.id}/check-plagiarism`,
+        {},
+      ),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['a-plag', assignment.id] });
+      toast({
+        title: 'Plagiarism check complete',
+        description: `Analyzed ${r.submissionsAnalyzed} submissions, found ${r.pairsFound} suspicious pairs.`,
+      });
+    },
+    onError: (e: Error) => toast({ title: 'Check failed', description: e.message, variant: 'destructive' }),
   });
 
   return (
@@ -232,15 +375,15 @@ function AssignmentCard({
           // Normal cards: slightly muted, full opacity on hover
           isNormal && 'opacity-[0.82] hover:opacity-100 transition-opacity duration-200',
           // Ambient dark glow for urgent cards
-          status === 'late'                                       && 'dark:shadow-[0_2px_16px_-6px_hsl(0_72%_54%_/_.24)]',
-          urgency === 'today' && status === 'pending'             && 'dark:shadow-[0_2px_16px_-6px_hsl(38_80%_60%_/_.20)]',
+          status === 'late' && 'dark:shadow-[0_2px_16px_-6px_hsl(0_72%_54%_/_.24)]',
+          urgency === 'today' && status === 'pending' && 'dark:shadow-[0_2px_16px_-6px_hsl(38_80%_60%_/_.20)]',
           // Hover glow
-          status === 'late'                                       && 'dark:hover:shadow-[0_4px_28px_-4px_hsl(0_72%_54%_/_.40)]',
-          urgency === 'today'  && status === 'pending'            && 'dark:hover:shadow-[0_4px_24px_-4px_hsl(38_80%_60%_/_.34)]',
-          urgency === 'soon'   && status === 'pending'            && 'dark:hover:shadow-[0_4px_20px_-4px_hsl(38_72%_54%_/_.22)]',
-          status === 'submitted'                                  && 'dark:hover:shadow-[0_4px_20px_-4px_hsl(213_80%_60%_/_.18)]',
-          status === 'graded'                                     && 'dark:hover:shadow-[0_4px_20px_-4px_hsl(38_80%_60%_/_.18)]',
-          urgency === 'normal' && status === 'pending'            && 'dark:hover:shadow-[0_4px_20px_-4px_hsl(142_72%_54%_/_.14)]',
+          status === 'late' && 'dark:hover:shadow-[0_4px_28px_-4px_hsl(0_72%_54%_/_.40)]',
+          urgency === 'today' && status === 'pending' && 'dark:hover:shadow-[0_4px_24px_-4px_hsl(38_80%_60%_/_.34)]',
+          urgency === 'soon' && status === 'pending' && 'dark:hover:shadow-[0_4px_20px_-4px_hsl(38_72%_54%_/_.22)]',
+          status === 'submitted' && 'dark:hover:shadow-[0_4px_20px_-4px_hsl(213_80%_60%_/_.18)]',
+          status === 'graded' && 'dark:hover:shadow-[0_4px_20px_-4px_hsl(38_80%_60%_/_.18)]',
+          urgency === 'normal' && status === 'pending' && 'dark:hover:shadow-[0_4px_20px_-4px_hsl(142_72%_54%_/_.14)]',
         )}
       >
         {/* Accent bar — pulses for today */}
@@ -259,55 +402,67 @@ function AssignmentCard({
         <div className={cn('p-4 pt-5', isCritical && 'p-5 pt-6')}>
           <div className="flex items-start gap-3">
             {/* Icon badge */}
-            <div className={cn(
-              'mt-0.5 rounded-md flex items-center justify-center shrink-0',
-              isCritical ? 'h-9 w-9' : 'h-8 w-8',
-              status === 'pending' && urgency === 'today'  && 'bg-amber-50 dark:bg-amber-500/[0.15]',
-              status === 'pending' && urgency === 'soon'   && 'bg-amber-50 dark:bg-amber-500/[0.10]',
-              status === 'pending' && urgency === 'normal' && 'bg-emerald-50 dark:bg-emerald-500/[0.12]',
-              status === 'submitted' && 'bg-blue-50 dark:bg-blue-500/[0.12]',
-              status === 'late'      && 'bg-rose-50 dark:bg-rose-500/[0.14]',
-              status === 'graded'    && 'bg-amber-50 dark:bg-amber-500/[0.12]',
-            )}>
-              <StatusIcon className={cn(
-                isCritical ? 'h-4.5 w-4.5' : 'h-4 w-4',
-                status === 'pending' && urgency === 'today'  && 'text-amber-600 dark:text-amber-400',
-                status === 'pending' && urgency === 'soon'   && 'text-amber-500 dark:text-amber-400',
-                status === 'pending' && urgency === 'normal' && 'text-emerald-600 dark:text-emerald-400',
-                status === 'submitted' && 'text-blue-600 dark:text-blue-400',
-                status === 'late'      && 'text-rose-600 dark:text-rose-400',
-                status === 'graded'    && 'text-amber-600 dark:text-amber-400',
-              )} />
+            <div
+              className={cn(
+                'mt-0.5 rounded-md flex items-center justify-center shrink-0',
+                isCritical ? 'h-9 w-9' : 'h-8 w-8',
+                status === 'pending' && urgency === 'today' && 'bg-amber-50 dark:bg-amber-500/[0.15]',
+                status === 'pending' && urgency === 'soon' && 'bg-amber-50 dark:bg-amber-500/[0.10]',
+                status === 'pending' && urgency === 'normal' && 'bg-emerald-50 dark:bg-emerald-500/[0.12]',
+                status === 'submitted' && 'bg-blue-50 dark:bg-blue-500/[0.12]',
+                status === 'late' && 'bg-rose-50 dark:bg-rose-500/[0.14]',
+                status === 'graded' && 'bg-amber-50 dark:bg-amber-500/[0.12]',
+              )}
+            >
+              <StatusIcon
+                className={cn(
+                  isCritical ? 'h-4.5 w-4.5' : 'h-4 w-4',
+                  status === 'pending' && urgency === 'today' && 'text-amber-600 dark:text-amber-400',
+                  status === 'pending' && urgency === 'soon' && 'text-amber-500 dark:text-amber-400',
+                  status === 'pending' && urgency === 'normal' && 'text-emerald-600 dark:text-emerald-400',
+                  status === 'submitted' && 'text-blue-600 dark:text-blue-400',
+                  status === 'late' && 'text-rose-600 dark:text-rose-400',
+                  status === 'graded' && 'text-amber-600 dark:text-amber-400',
+                )}
+              />
             </div>
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <h3 className={cn(
-                  'font-serif font-semibold text-foreground leading-tight',
-                  isCritical ? 'text-base' : 'text-sm',
-                )}>
+                <h3
+                  className={cn(
+                    'font-serif font-semibold text-foreground leading-tight',
+                    isCritical ? 'text-base' : 'text-sm',
+                  )}
+                >
                   {assignment.title}
                 </h3>
                 {/* Urgency-aware badge */}
-                <span className={cn(
-                  'inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border shrink-0',
-                  urgency === 'today' && status === 'pending'
-                    ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/[0.12] dark:text-amber-300 dark:border-amber-500/30'
-                    : urgency === 'soon' && status === 'pending'
-                    ? 'bg-amber-50/70 text-amber-600 border-amber-200/70 dark:bg-amber-500/[0.08] dark:text-amber-400 dark:border-amber-500/25'
-                    : cn(cfg.badge, cfg.badgeDark),
-                )}>
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border shrink-0',
+                    urgency === 'today' && status === 'pending'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/[0.12] dark:text-amber-300 dark:border-amber-500/30'
+                      : urgency === 'soon' && status === 'pending'
+                        ? 'bg-amber-50/70 text-amber-600 border-amber-200/70 dark:bg-amber-500/[0.08] dark:text-amber-400 dark:border-amber-500/25'
+                        : cn(cfg.badge, cfg.badgeDark),
+                  )}
+                >
                   <StatusIcon className="h-3 w-3" />
-                  {urgency === 'today' && status === 'pending' ? 'Due today' :
-                   urgency === 'soon'  && status === 'pending' ? `${daysUntilDue}d left` :
-                   cfg.label}
+                  {urgency === 'today' && status === 'pending'
+                    ? 'Due today'
+                    : urgency === 'soon' && status === 'pending'
+                      ? `${daysUntilDue}d left`
+                      : cfg.label}
                 </span>
               </div>
               {assignment.description && (
-                <p className={cn(
-                  'text-sm leading-relaxed mt-1 line-clamp-2',
-                  isCritical ? 'text-foreground/70' : 'text-muted-foreground',
-                )}>
+                <p
+                  className={cn(
+                    'text-sm leading-relaxed mt-1 line-clamp-2',
+                    isCritical ? 'text-foreground/70' : 'text-muted-foreground',
+                  )}
+                >
                   {assignment.description}
                 </p>
               )}
@@ -316,10 +471,15 @@ function AssignmentCard({
 
           {/* Meta */}
           <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-            <span className={cn(
-              'flex items-center gap-1',
-              isOverdue && status !== 'submitted' && status !== 'graded' && 'text-rose-600 dark:text-rose-400 font-medium',
-            )}>
+            <span
+              className={cn(
+                'flex items-center gap-1',
+                isOverdue &&
+                  status !== 'submitted' &&
+                  status !== 'graded' &&
+                  'text-rose-600 dark:text-rose-400 font-medium',
+              )}
+            >
               <CalendarClock className="h-3.5 w-3.5" />
               {t.courseAssignments.due}: {formatDateTime(assignment.dueAt)}
             </span>
@@ -342,14 +502,14 @@ function AssignmentCard({
                 <BookOpen className="h-3 w-3" /> Resources
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {assignment.resources!.map(r => (
+                {assignment.resources!.map((r) => (
                   <a
                     key={r.id}
                     href={r.fileUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 rounded-md border border-border/50 dark:border-white/[0.07] bg-blue-50/50 dark:bg-blue-500/[0.07] px-2 py-1 text-[11px] font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100/60 dark:hover:bg-blue-500/[0.12] transition-colors max-w-[160px]"
-                    onClick={e => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <FileText className="h-3 w-3 shrink-0" />
                     <span className="truncate">{r.fileName}</span>
@@ -363,17 +523,18 @@ function AssignmentCard({
           {submission && (submission.attachments?.length ?? 0) > 0 && (
             <div className="mt-3 pt-3 border-t border-border/30 dark:border-white/[0.04]">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1">
-                <Paperclip className="h-3 w-3" /> {submission.attachments!.length} attachment{submission.attachments!.length !== 1 ? 's' : ''}
+                <Paperclip className="h-3 w-3" /> {submission.attachments!.length} attachment
+                {submission.attachments!.length !== 1 ? 's' : ''}
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {submission.attachments!.map(a => (
+                {submission.attachments!.map((a) => (
                   <a
                     key={a.id}
                     href={a.fileUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 rounded-md border border-border/50 dark:border-white/[0.07] bg-muted/30 px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted/60 transition-colors max-w-[160px]"
-                    onClick={e => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <FileIcon className="h-3 w-3 text-primary/70 shrink-0" />
                     <span className="truncate">{a.fileName}</span>
@@ -396,37 +557,49 @@ function AssignmentCard({
               <div className="text-xs text-muted-foreground">
                 {status === 'submitted' && (
                   <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
-                    <CheckCircle2 className="h-3 w-3" />{t.courseAssignments.submitted}
+                    <CheckCircle2 className="h-3 w-3" />
+                    {t.courseAssignments.submitted}
                   </span>
                 )}
                 {status === 'graded' && (
                   <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
-                    <Award className="h-3 w-3" />Graded
+                    <Award className="h-3 w-3" />
+                    Graded
                   </span>
                 )}
               </div>
               {isStu && (
                 <div className="flex items-center gap-2">
                   {status !== 'graded' && (
-                    <Button size="sm" variant={status === 'submitted' ? 'outline' : 'default'}
-                      className="gap-1.5 h-7 text-xs" onClick={() => onSubmit(assignment.id)}>
+                    <Button
+                      size="sm"
+                      variant={status === 'submitted' ? 'outline' : 'default'}
+                      className="gap-1.5 h-7 text-xs"
+                      onClick={() => onSubmit(assignment.id)}
+                    >
                       <Send className="h-3 w-3" />
                       {status === 'submitted' ? 'Resubmit' : t.courseAssignments.submit}
                     </Button>
                   )}
-                  <Button size="sm" variant="outline"
+                  <Button
+                    size="sm"
+                    variant="outline"
                     className="gap-1.5 h-7 text-xs border-purple-200/80 text-purple-700 hover:bg-purple-50 dark:border-purple-500/30 dark:text-purple-300 dark:hover:bg-purple-500/[0.08]"
                     onClick={() => onAiFeedback(assignment.id)}
                     title={submission ? t.courseAssignments.aiFeedbackHint : t.courseAssignments.aiFeedbackHintDisabled}
                   >
-                    <Sparkles className="h-3 w-3" />{t.courseAssignments.aiFeedback}
+                    <Sparkles className="h-3 w-3" />
+                    {t.courseAssignments.aiFeedback}
                   </Button>
-                  <Button size="sm" variant="outline"
+                  <Button
+                    size="sm"
+                    variant="outline"
                     className="gap-1.5 h-7 text-xs border-blue-200/80 text-blue-700 hover:bg-blue-50 dark:border-blue-500/30 dark:text-blue-300 dark:hover:bg-blue-500/[0.08]"
                     onClick={() => onAiExplain(assignment)}
                     title="Explain this assignment and suggest an approach"
                   >
-                    <Brain className="h-3 w-3" />Explain
+                    <Brain className="h-3 w-3" />
+                    Explain
                   </Button>
                 </div>
               )}
@@ -437,7 +610,8 @@ function AssignmentCard({
                 >
                   <Users className="h-3.5 w-3.5" />
                   <span>
-                    {assignment._count?.submissions ?? 0} submission{(assignment._count?.submissions ?? 0) !== 1 ? 's' : ''}
+                    {assignment._count?.submissions ?? 0} submission
+                    {(assignment._count?.submissions ?? 0) !== 1 ? 's' : ''}
                   </span>
                   <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
                 </button>
@@ -460,7 +634,7 @@ function AssignmentCard({
           <div className="mt-1">
             {subsLoading ? (
               <div className="space-y-2 py-2">
-                {[1, 2, 3].map(i => (
+                {[1, 2, 3].map((i) => (
                   <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
                     <div className="h-8 w-8 rounded-full bg-muted animate-pulse shrink-0" />
                     <div className="flex-1 space-y-1.5">
@@ -476,26 +650,52 @@ function AssignmentCard({
                   <Users className="h-6 w-6 text-muted-foreground/30" />
                 </div>
                 <p className="text-sm text-muted-foreground">No submissions yet.</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">
-                  Students haven't submitted this assignment.
-                </p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Students haven't submitted this assignment.</p>
               </div>
             ) : (
               <div className="space-y-1 max-h-[420px] overflow-y-auto pr-1 -mr-1">
-                {/* Summary row */}
-                <div className="flex items-center gap-3 px-3 py-2 mb-1 rounded-lg bg-muted/30 dark:bg-white/[0.03] text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">{allSubsList.length}</span> total ·{' '}
-                  <span className="text-amber-600 dark:text-amber-400 font-medium">
-                    {allSubsList.filter(s => s.grade).length}
-                  </span>{' '}graded ·{' '}
-                  <span className="text-blue-600 dark:text-blue-400 font-medium">
-                    {allSubsList.filter(s => s.status === 'SUBMITTED' && !s.grade).length}
-                  </span>{' '}pending review
+                {/* Summary row + plagiarism action */}
+                <div className="flex items-center justify-between gap-3 px-3 py-2 mb-1 rounded-lg bg-muted/30 dark:bg-white/[0.03] text-xs">
+                  <div className="text-muted-foreground">
+                    <span className="font-medium text-foreground">{allSubsList.length}</span> total ·{' '}
+                    <span className="text-amber-600 dark:text-amber-400 font-medium">
+                      {allSubsList.filter((s) => s.grade).length}
+                    </span>{' '}
+                    graded ·{' '}
+                    <span className="text-blue-600 dark:text-blue-400 font-medium">
+                      {allSubsList.filter((s) => s.status === 'SUBMITTED' && !s.grade).length}
+                    </span>{' '}
+                    pending
+                    {plagReports.length > 0 && (
+                      <>
+                        {' · '}
+                        <span className="text-rose-600 dark:text-rose-400 font-medium">{plagReports.length}</span>{' '}
+                        suspicious pair{plagReports.length !== 1 ? 's' : ''}
+                      </>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => runPlagiarism.mutate()}
+                    disabled={runPlagiarism.isPending || allSubsList.length < 2}
+                    title="Run pairwise Jaccard 3-gram similarity check on all submitted text"
+                  >
+                    {runPlagiarism.isPending ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <ShieldAlert className="h-3 w-3" />
+                    )}
+                    Check plagiarism
+                  </Button>
                 </div>
 
-                {allSubsList.map(sub => {
-                  const subStatus: 'graded' | 'submitted' | 'draft' =
-                    sub.grade ? 'graded' : sub.status === 'SUBMITTED' ? 'submitted' : 'draft';
+                {allSubsList.map((sub) => {
+                  const subStatus: 'graded' | 'submitted' | 'draft' = sub.grade
+                    ? 'graded'
+                    : sub.status === 'SUBMITTED'
+                      ? 'submitted'
+                      : 'draft';
                   const isLate = !!(sub.submittedAt && new Date(sub.submittedAt) > new Date(assignment.dueAt));
 
                   return (
@@ -511,12 +711,26 @@ function AssignmentCard({
                       {/* Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium truncate">
-                            {sub.student?.fullName ?? 'Unknown'}
-                          </span>
+                          <span className="text-sm font-medium truncate">{sub.student?.fullName ?? 'Unknown'}</span>
                           {isLate && (
                             <span className="text-[10px] font-medium px-1.5 py-0 rounded-full bg-rose-50 text-rose-600 border border-rose-200/70 dark:bg-rose-500/[0.1] dark:text-rose-300 dark:border-rose-500/25">
                               Late
+                            </span>
+                          )}
+                          {plagBySub[sub.id] && (
+                            <span
+                              className={cn(
+                                'inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0 rounded-full border',
+                                plagBySub[sub.id].pct >= 70
+                                  ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/[0.12] dark:text-rose-300 dark:border-rose-500/30'
+                                  : plagBySub[sub.id].pct >= 40
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/[0.12] dark:text-amber-300 dark:border-amber-500/30'
+                                    : 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-500/[0.12] dark:text-yellow-200 dark:border-yellow-500/30',
+                              )}
+                              title={`${plagBySub[sub.id].pct}% similar to ${plagBySub[sub.id].otherName}`}
+                            >
+                              <ShieldAlert className="h-2.5 w-2.5" />
+                              {plagBySub[sub.id].pct}%
                             </span>
                           )}
                         </div>
@@ -524,7 +738,10 @@ function AssignmentCard({
                           {sub.submittedAt ? (
                             <span>
                               {new Date(sub.submittedAt).toLocaleDateString('en-US', {
-                                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
                               })}
                             </span>
                           ) : (
@@ -541,14 +758,16 @@ function AssignmentCard({
 
                       {/* Status + review button */}
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className={cn(
-                          'text-[10px] font-medium px-2 py-0.5 rounded-full border',
-                          subStatus === 'graded'
-                            ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/[0.1] dark:text-amber-300 dark:border-amber-500/25'
-                            : subStatus === 'submitted'
-                            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/[0.1] dark:text-blue-300 dark:border-blue-500/25'
-                            : 'bg-muted text-muted-foreground border-border',
-                        )}>
+                        <span
+                          className={cn(
+                            'text-[10px] font-medium px-2 py-0.5 rounded-full border',
+                            subStatus === 'graded'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/[0.1] dark:text-amber-300 dark:border-amber-500/25'
+                              : subStatus === 'submitted'
+                                ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/[0.1] dark:text-blue-300 dark:border-blue-500/25'
+                                : 'bg-muted text-muted-foreground border-border',
+                          )}
+                        >
                           {subStatus === 'graded' ? 'Graded' : subStatus === 'submitted' ? 'Submitted' : 'Draft'}
                         </span>
                         <Link
@@ -574,19 +793,32 @@ function AssignmentCard({
 // ─── Timeline node ─────────────────────────────────────────────────────────────
 
 function TimelineNode({
-  assignment, submission, isStu, canC, onSubmit, onAiFeedback, onAiExplain, t,
-  isFirst, isLast, prevDone,
+  assignment,
+  submission,
+  isStu,
+  canC,
+  onSubmit,
+  onAiFeedback,
+  onAiExplain,
+  t,
+  isFirst,
+  isLast,
+  prevDone,
 }: {
-  assignment: Assignment; submission?: Submission;
-  isStu: boolean; canC: boolean;
+  assignment: Assignment;
+  submission?: Submission;
+  isStu: boolean;
+  canC: boolean;
   onSubmit: (id: string) => void;
   onAiFeedback: (id: string) => void;
   onAiExplain: (a: Assignment) => void;
   t: ReturnType<typeof useT>;
-  isFirst: boolean; isLast: boolean; prevDone: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+  prevDone: boolean;
 }) {
   const status = getAssignmentStatus(assignment, submission);
-  const urgency = (status === 'pending' || status === 'late') ? getDueUrgency(assignment.dueAt) : 'normal';
+  const urgency = status === 'pending' || status === 'late' ? getDueUrgency(assignment.dueAt) : 'normal';
   const isCritical = status === 'late' || (status === 'pending' && (urgency === 'today' || urgency === 'overdue'));
   const isDone = status === 'graded' || status === 'submitted';
   const StatusIcon = STATUS_CONFIG[status].icon;
@@ -594,16 +826,16 @@ function TimelineNode({
   const nodeClass = cn(
     'relative flex items-center justify-center rounded-full border-2 shrink-0 transition-all duration-150',
     isCritical ? 'h-6 w-6' : 'h-5 w-5',
-    status === 'graded'    && 'bg-amber-400 border-amber-500 dark:bg-amber-400 dark:border-amber-400',
+    status === 'graded' && 'bg-amber-400 border-amber-500 dark:bg-amber-400 dark:border-amber-400',
     status === 'submitted' && 'bg-blue-400 border-blue-500 dark:bg-blue-400 dark:border-blue-400',
-    status === 'late'      && 'bg-rose-500 border-rose-500 dark:bg-rose-400 dark:border-rose-400',
+    status === 'late' && 'bg-rose-500 border-rose-500 dark:bg-rose-400 dark:border-rose-400',
     status === 'pending' && (urgency === 'today' || urgency === 'overdue')
       ? 'bg-amber-400 border-amber-400 dark:bg-amber-300 dark:border-amber-300'
       : status === 'pending' && urgency === 'soon'
-      ? 'bg-background border-amber-400 dark:bg-card dark:border-amber-400'
-      : status === 'pending'
-      ? 'bg-background border-emerald-500 dark:bg-card dark:border-emerald-400'
-      : '',
+        ? 'bg-background border-amber-400 dark:bg-card dark:border-amber-400'
+        : status === 'pending'
+          ? 'bg-background border-emerald-500 dark:bg-card dark:border-emerald-400'
+          : '',
   );
 
   const topLineClass = cn(
@@ -620,14 +852,18 @@ function TimelineNode({
       <div className="flex flex-col items-center">
         <div className={topLineClass} />
         <div className={nodeClass}>
-          <StatusIcon className={cn(
-            'shrink-0',
-            isCritical ? 'h-3 w-3' : 'h-2.5 w-2.5',
-            (status === 'graded' || status === 'submitted' || status === 'late' ||
-             (status === 'pending' && (urgency === 'today' || urgency === 'overdue')))
-              ? 'text-white dark:text-background'
-              : 'text-emerald-600 dark:text-emerald-400',
-          )} />
+          <StatusIcon
+            className={cn(
+              'shrink-0',
+              isCritical ? 'h-3 w-3' : 'h-2.5 w-2.5',
+              status === 'graded' ||
+                status === 'submitted' ||
+                status === 'late' ||
+                (status === 'pending' && (urgency === 'today' || urgency === 'overdue'))
+                ? 'text-white dark:text-background'
+                : 'text-emerald-600 dark:text-emerald-400',
+            )}
+          />
           {/* Pulse ring for today */}
           {urgency === 'today' && status === 'pending' && (
             <motion.div
@@ -655,37 +891,40 @@ function TimelineNode({
             isCritical
               ? 'border-rose-200/60 dark:border-rose-400/20 dark:shadow-[0_2px_12px_-4px_hsl(0_72%_54%_/_.22)]'
               : urgency === 'today' && status === 'pending'
-              ? 'border-amber-200/60 dark:border-amber-400/20'
-              : 'border-border/40 dark:border-white/[0.06]',
+                ? 'border-amber-200/60 dark:border-amber-400/20'
+                : 'border-border/40 dark:border-white/[0.06]',
             'hover:shadow-lift dark:hover:shadow-glass',
           )}
         >
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-serif font-medium text-sm text-foreground leading-snug">
-              {assignment.title}
-            </h3>
-            <span className={cn(
-              'inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border shrink-0',
-              urgency === 'today' && status === 'pending'
-                ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/[0.12] dark:text-amber-300 dark:border-amber-500/30'
-                : cn(STATUS_CONFIG[status].badge, STATUS_CONFIG[status].badgeDark),
-            )}>
+            <h3 className="font-serif font-medium text-sm text-foreground leading-snug">{assignment.title}</h3>
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border shrink-0',
+                urgency === 'today' && status === 'pending'
+                  ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/[0.12] dark:text-amber-300 dark:border-amber-500/30'
+                  : cn(STATUS_CONFIG[status].badge, STATUS_CONFIG[status].badgeDark),
+              )}
+            >
               <StatusIcon className="h-2.5 w-2.5" />
               {urgency === 'today' && status === 'pending' ? 'Today' : STATUS_CONFIG[status].label}
             </span>
           </div>
 
           <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
-            <span className={cn(
-              'flex items-center gap-1',
-              isCritical && 'text-rose-600 dark:text-rose-400 font-medium',
-              urgency === 'today' && status === 'pending' && 'text-amber-600 dark:text-amber-400 font-medium',
-            )}>
+            <span
+              className={cn(
+                'flex items-center gap-1',
+                isCritical && 'text-rose-600 dark:text-rose-400 font-medium',
+                urgency === 'today' && status === 'pending' && 'text-amber-600 dark:text-amber-400 font-medium',
+              )}
+            >
               <CalendarClock className="h-3 w-3" />
               {formatDateTime(assignment.dueAt)}
             </span>
             <span className="flex items-center gap-1">
-              <Award className="h-3 w-3" />{assignment.maxScore}pts
+              <Award className="h-3 w-3" />
+              {assignment.maxScore}pts
             </span>
             {status === 'graded' && submission?.grade != null && (
               <span className="font-semibold text-amber-600 dark:text-amber-400">
@@ -697,21 +936,33 @@ function TimelineNode({
           {isStu && (
             <div className="flex gap-2 mt-2.5">
               {status !== 'graded' && (
-                <Button size="sm" variant={status === 'submitted' ? 'outline' : 'default'}
-                  className="h-6 text-[11px] gap-1" onClick={() => onSubmit(assignment.id)}>
+                <Button
+                  size="sm"
+                  variant={status === 'submitted' ? 'outline' : 'default'}
+                  className="h-6 text-[11px] gap-1"
+                  onClick={() => onSubmit(assignment.id)}
+                >
                   <Send className="h-2.5 w-2.5" />
                   {status === 'submitted' ? 'Resubmit' : t.courseAssignments.submit}
                 </Button>
               )}
-              <Button size="sm" variant="outline"
+              <Button
+                size="sm"
+                variant="outline"
                 className="h-6 text-[11px] gap-1 border-purple-200/80 text-purple-700 hover:bg-purple-50 dark:border-purple-500/30 dark:text-purple-300 dark:hover:bg-purple-500/[0.08]"
-                onClick={() => onAiFeedback(assignment.id)}>
-                <Sparkles className="h-2.5 w-2.5" />AI
+                onClick={() => onAiFeedback(assignment.id)}
+              >
+                <Sparkles className="h-2.5 w-2.5" />
+                AI
               </Button>
-              <Button size="sm" variant="outline"
+              <Button
+                size="sm"
+                variant="outline"
                 className="h-6 text-[11px] gap-1 border-blue-200/80 text-blue-700 hover:bg-blue-50 dark:border-blue-500/30 dark:text-blue-300 dark:hover:bg-blue-500/[0.08]"
-                onClick={() => onAiExplain(assignment)}>
-                <Brain className="h-2.5 w-2.5" />Explain
+                onClick={() => onAiExplain(assignment)}
+              >
+                <Brain className="h-2.5 w-2.5" />
+                Explain
               </Button>
             </div>
           )}
@@ -724,11 +975,19 @@ function TimelineNode({
 // ─── Timeline view ─────────────────────────────────────────────────────────────
 
 function TimelineView({
-  assignments, submissions, isStu, canC, onSubmit, onAiFeedback, onAiExplain, t,
+  assignments,
+  submissions,
+  isStu,
+  canC,
+  onSubmit,
+  onAiFeedback,
+  onAiExplain,
+  t,
 }: {
   assignments: Assignment[];
   submissions: Record<string, Submission>;
-  isStu: boolean; canC: boolean;
+  isStu: boolean;
+  canC: boolean;
   onSubmit: (id: string) => void;
   onAiFeedback: (id: string) => void;
   onAiExplain: (a: Assignment) => void;
@@ -766,14 +1025,39 @@ function TimelineView({
 // ─── Kanban view ───────────────────────────────────────────────────────────────
 
 const KANBAN_COLUMNS: { key: AssignmentStatus; label: string; color: string; bg: string }[] = [
-  { key: 'pending',   label: 'To Do',     color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/[0.08]' },
-  { key: 'late',      label: 'Overdue',   color: 'text-rose-600 dark:text-rose-400',       bg: 'bg-rose-50 dark:bg-rose-500/[0.08]' },
-  { key: 'submitted', label: 'Submitted', color: 'text-blue-600 dark:text-blue-400',       bg: 'bg-blue-50 dark:bg-blue-500/[0.08]' },
-  { key: 'graded',    label: 'Graded',    color: 'text-amber-600 dark:text-amber-400',     bg: 'bg-amber-50 dark:bg-amber-500/[0.08]' },
+  {
+    key: 'pending',
+    label: 'To Do',
+    color: 'text-emerald-600 dark:text-emerald-400',
+    bg: 'bg-emerald-50 dark:bg-emerald-500/[0.08]',
+  },
+  {
+    key: 'late',
+    label: 'Overdue',
+    color: 'text-rose-600 dark:text-rose-400',
+    bg: 'bg-rose-50 dark:bg-rose-500/[0.08]',
+  },
+  {
+    key: 'submitted',
+    label: 'Submitted',
+    color: 'text-blue-600 dark:text-blue-400',
+    bg: 'bg-blue-50 dark:bg-blue-500/[0.08]',
+  },
+  {
+    key: 'graded',
+    label: 'Graded',
+    color: 'text-amber-600 dark:text-amber-400',
+    bg: 'bg-amber-50 dark:bg-amber-500/[0.08]',
+  },
 ];
 
 function KanbanView({
-  assignments, submissions, onSubmit, onAiExplain, currentUserId, t,
+  assignments,
+  submissions,
+  onSubmit,
+  onAiExplain,
+  currentUserId,
+  t,
 }: {
   assignments: Assignment[];
   submissions: Record<string, Submission>;
@@ -783,14 +1067,14 @@ function KanbanView({
   t: ReturnType<typeof useT>;
 }) {
   const grouped: Record<AssignmentStatus, Assignment[]> = { pending: [], late: [], submitted: [], graded: [] };
-  assignments.forEach(a => {
+  assignments.forEach((a) => {
     const s = getAssignmentStatus(a, submissions[a.id]);
     grouped[s].push(a);
   });
 
   return (
     <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 pt-1">
-      {KANBAN_COLUMNS.map(col => (
+      {KANBAN_COLUMNS.map((col) => (
         <div key={col.key} className="flex flex-col gap-2">
           {/* Column header */}
           <div className={cn('flex items-center justify-between rounded-lg px-3 py-2', col.bg)}>
@@ -809,7 +1093,7 @@ function KanbanView({
                 <p className="text-xs text-muted-foreground/50">Empty</p>
               </div>
             ) : (
-              grouped[col.key].map(a => {
+              grouped[col.key].map((a) => {
                 const submission = submissions[a.id];
                 const urgency = getDueUrgency(a.dueAt);
                 const daysLeft = Math.ceil((new Date(a.dueAt).getTime() - Date.now()) / 86_400_000);
@@ -828,13 +1112,23 @@ function KanbanView({
                   >
                     <p className="text-xs font-medium text-foreground leading-snug line-clamp-2">{a.title}</p>
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
-                      <span className={cn(
-                        'text-[10px]',
-                        col.key === 'late' ? 'text-rose-500' :
-                        urgency === 'today' ? 'text-amber-500' :
-                        'text-muted-foreground/60',
-                      )}>
-                        {col.key === 'late' ? 'Overdue' : col.key === 'submitted' || col.key === 'graded' ? '✓' : daysLeft > 0 ? `${daysLeft}d` : 'Today'}
+                      <span
+                        className={cn(
+                          'text-[10px]',
+                          col.key === 'late'
+                            ? 'text-rose-500'
+                            : urgency === 'today'
+                              ? 'text-amber-500'
+                              : 'text-muted-foreground/60',
+                        )}
+                      >
+                        {col.key === 'late'
+                          ? 'Overdue'
+                          : col.key === 'submitted' || col.key === 'graded'
+                            ? '✓'
+                            : daysLeft > 0
+                              ? `${daysLeft}d`
+                              : 'Today'}
                       </span>
                       <span className="text-[10px] text-muted-foreground/60">{a.maxScore}pts</span>
                       {col.key === 'graded' && submission?.grade && (
@@ -883,7 +1177,9 @@ function EmptyState({ canCreate, onCreate }: { canCreate: boolean; onCreate: () 
       </div>
       <p className="font-serif font-medium text-foreground mb-1">No assignments yet</p>
       <p className="text-sm text-muted-foreground max-w-xs">
-        {canCreate ? 'Create your first assignment to get started.' : "Your instructor hasn't posted any assignments yet."}
+        {canCreate
+          ? 'Create your first assignment to get started.'
+          : "Your instructor hasn't posted any assignments yet."}
       </p>
       {canCreate && (
         <Button onClick={onCreate} size="sm" className="mt-5 gap-2">
@@ -951,7 +1247,7 @@ export default function AssignmentsPage() {
       const assignment = await api.post<Assignment>(`/courses/${id}/assignments`, d);
       if (resFiles.length) {
         const fd = new FormData();
-        resFiles.forEach(f => fd.append('files', f));
+        resFiles.forEach((f) => fd.append('files', f));
         await api.uploadWithProgress(`/assignments/${assignment.id}/resources`, fd, () => {});
       }
       return assignment;
@@ -959,7 +1255,12 @@ export default function AssignmentsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['c-asgn', id] });
       toast({ title: t.courseAssignments.created });
-      sCO(false); sNT(''); sND(''); sNDu(''); sNM('100'); setResFiles([]);
+      sCO(false);
+      sNT('');
+      sND('');
+      sNDu('');
+      sNM('100');
+      setResFiles([]);
     },
     onError: (e: any) => toast({ title: t.common.error, description: e.message, variant: 'destructive' }),
   });
@@ -968,7 +1269,7 @@ export default function AssignmentsPage() {
     mutationFn: ({ aid, d, files }: { aid: string; d: any; files?: File[] }) => {
       if (files?.length) {
         const fd = new FormData();
-        files.forEach(f => fd.append('files', f));
+        files.forEach((f) => fd.append('files', f));
         if (d.contentText) fd.append('contentText', d.contentText);
         if (d.contentUrl) fd.append('contentUrl', d.contentUrl);
         return api.uploadWithProgress(`/assignments/${aid}/submit-files`, fd, setUploadProgress);
@@ -977,7 +1278,12 @@ export default function AssignmentsPage() {
     },
     onSuccess: () => {
       toast({ title: t.courseAssignments.submittedToast });
-      sSO(null); sST(''); sSU(''); setSubTab('text'); setSubFiles([]); setUploadProgress(0);
+      sSO(null);
+      sST('');
+      sSU('');
+      setSubTab('text');
+      setSubFiles([]);
+      setUploadProgress(0);
       qc.invalidateQueries({ queryKey: ['my-subs', id] });
     },
     onError: (e: any) => toast({ title: t.common.error, description: e.message, variant: 'destructive' }),
@@ -995,12 +1301,22 @@ export default function AssignmentsPage() {
   const handleAiFeedback = async (assignmentId: string) => {
     const submission = submissionByAssignment[assignmentId];
     if (!submission) {
-      toast({ title: t.courseAssignments.noSubmissionTitle, description: t.courseAssignments.noSubmissionDescription, variant: 'destructive' });
+      toast({
+        title: t.courseAssignments.noSubmissionTitle,
+        description: t.courseAssignments.noSubmissionDescription,
+        variant: 'destructive',
+      });
       return;
     }
-    setAiFeedback(null); setAiOpen(true); setAiLoading(true);
+    setAiFeedback(null);
+    setAiOpen(true);
+    setAiLoading(true);
     try {
-      const result = await api.post<AiFeedback>('/ai/assignment-feedback', { assignmentId, submissionId: submission.id, lang });
+      const result = await api.post<AiFeedback>('/ai/assignment-feedback', {
+        assignmentId,
+        submissionId: submission.id,
+        lang,
+      });
       setAiFeedback(result);
     } catch (e: any) {
       toast({ title: t.courseAssignments.aiUnavailable, description: e.message, variant: 'destructive' });
@@ -1010,64 +1326,81 @@ export default function AssignmentsPage() {
     }
   };
 
-  const handleAiExplain = useCallback(async (assignment: Assignment) => {
-    aiExplainAbort.current?.abort();
-    const ctrl = new AbortController();
-    aiExplainAbort.current = ctrl;
-    setAiExplainAssignment(assignment);
-    setAiExplainText('');
-    setAiExplainStreaming(true);
-    setAiExplainOpen(true);
-    try {
-      const res = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          message: `Explain this assignment and suggest a clear approach to solve it:`,
-          context: `Assignment: "${assignment.title}"\n\nDescription: ${assignment.description || '(no description)'}\n\nMax score: ${assignment.maxScore} points. Due: ${assignment.dueAt}`,
-          lang,
-        }),
-        signal: ctrl.signal,
-      });
-      if (!res.ok) throw new Error('AI unavailable');
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') break;
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.text) setAiExplainText(t => t + parsed.text);
-          } catch {}
+  const handleAiExplain = useCallback(
+    async (assignment: Assignment) => {
+      aiExplainAbort.current?.abort();
+      const ctrl = new AbortController();
+      aiExplainAbort.current = ctrl;
+      setAiExplainAssignment(assignment);
+      setAiExplainText('');
+      setAiExplainStreaming(true);
+      setAiExplainOpen(true);
+      try {
+        const res = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            message: `Explain this assignment and suggest a clear approach to solve it:`,
+            context: `Assignment: "${assignment.title}"\n\nDescription: ${assignment.description || '(no description)'}\n\nMax score: ${assignment.maxScore} points. Due: ${assignment.dueAt}`,
+            lang,
+          }),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error('AI unavailable');
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') break;
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.text) setAiExplainText((t) => t + parsed.text);
+            } catch {}
+          }
         }
+      } catch (e: any) {
+        if (e.name !== 'AbortError') {
+          setAiExplainText('AI is currently unavailable. Please try again later.');
+        }
+      } finally {
+        setAiExplainStreaming(false);
       }
-    } catch (e: any) {
-      if (e.name !== 'AbortError') {
-        setAiExplainText('AI is currently unavailable. Please try again later.');
-      }
-    } finally {
-      setAiExplainStreaming(false);
-    }
-  }, [lang]);
+    },
+    [lang],
+  );
 
   const canC = user?.role === 'ADMIN' || user?.role === 'TEACHER';
   const isStu = user?.role === 'STUDENT';
 
-  const statusCounts = isStu ? assignments.reduce<Record<AssignmentStatus, number>>(
-    (acc, a) => { const s = getAssignmentStatus(a, submissionByAssignment[a.id]); acc[s] = (acc[s] || 0) + 1; return acc; },
-    { pending: 0, submitted: 0, late: 0, graded: 0 },
-  ) : null;
+  const statusCounts = isStu
+    ? assignments.reduce<Record<AssignmentStatus, number>>(
+        (acc, a) => {
+          const s = getAssignmentStatus(a, submissionByAssignment[a.id]);
+          acc[s] = (acc[s] || 0) + 1;
+          return acc;
+        },
+        { pending: 0, submitted: 0, late: 0, graded: 0 },
+      )
+    : null;
 
-  const sharedCardProps = { isStu, canC, onSubmit: sSO, onAiFeedback: handleAiFeedback, onAiExplain: handleAiExplain, currentUserId: user?.id ?? '', t };
+  const sharedCardProps = {
+    isStu,
+    canC,
+    onSubmit: sSO,
+    onAiFeedback: handleAiFeedback,
+    onAiExplain: handleAiExplain,
+    currentUserId: user?.id ?? '',
+    t,
+  };
 
   return (
     <div className="space-y-5 mt-1">
@@ -1082,13 +1415,26 @@ export default function AssignmentsPage() {
           </h2>
           {isStu && statusCounts && assignments.length > 0 && (
             <p className="text-xs text-muted-foreground mt-0.5">
-              {statusCounts.pending > 0 && <span className="text-emerald-600 dark:text-emerald-400 font-medium">{statusCounts.pending} open</span>}
-              {statusCounts.pending > 0 && (statusCounts.late > 0 || statusCounts.submitted > 0 || statusCounts.graded > 0) && <span className="mx-1.5 opacity-40">·</span>}
-              {statusCounts.submitted > 0 && <span className="text-blue-600 dark:text-blue-400">{statusCounts.submitted} submitted</span>}
-              {statusCounts.submitted > 0 && (statusCounts.late > 0 || statusCounts.graded > 0) && <span className="mx-1.5 opacity-40">·</span>}
-              {statusCounts.late > 0 && <span className="text-rose-600 dark:text-rose-400 font-medium">{statusCounts.late} late</span>}
+              {statusCounts.pending > 0 && (
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium">{statusCounts.pending} open</span>
+              )}
+              {statusCounts.pending > 0 &&
+                (statusCounts.late > 0 || statusCounts.submitted > 0 || statusCounts.graded > 0) && (
+                  <span className="mx-1.5 opacity-40">·</span>
+                )}
+              {statusCounts.submitted > 0 && (
+                <span className="text-blue-600 dark:text-blue-400">{statusCounts.submitted} submitted</span>
+              )}
+              {statusCounts.submitted > 0 && (statusCounts.late > 0 || statusCounts.graded > 0) && (
+                <span className="mx-1.5 opacity-40">·</span>
+              )}
+              {statusCounts.late > 0 && (
+                <span className="text-rose-600 dark:text-rose-400 font-medium">{statusCounts.late} late</span>
+              )}
               {statusCounts.late > 0 && statusCounts.graded > 0 && <span className="mx-1.5 opacity-40">·</span>}
-              {statusCounts.graded > 0 && <span className="text-amber-600 dark:text-amber-400">{statusCounts.graded} graded</span>}
+              {statusCounts.graded > 0 && (
+                <span className="text-amber-600 dark:text-amber-400">{statusCounts.graded} graded</span>
+              )}
             </p>
           )}
         </div>
@@ -1119,7 +1465,7 @@ export default function AssignmentsPage() {
       {/* Content */}
       {isLoading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map(i => (
+          {[1, 2, 3].map((i) => (
             <div key={i} className="rounded-lg border bg-background dark:bg-card/80 overflow-hidden">
               <div className="h-[3px] bg-muted animate-shimmer" />
               <div className="p-4 space-y-2">
@@ -1143,16 +1489,12 @@ export default function AssignmentsPage() {
         />
       ) : viewMode === 'timeline' ? (
         <div className="pt-2">
-          <TimelineView
-            assignments={assignments}
-            submissions={submissionByAssignment}
-            {...sharedCardProps}
-          />
+          <TimelineView assignments={assignments} submissions={submissionByAssignment} {...sharedCardProps} />
         </div>
       ) : (
         <div className="space-y-4">
           <motion.div className="space-y-3" variants={LIST_CONTAINER} initial="hidden" animate="visible">
-            {assignments.map(a => (
+            {assignments.map((a) => (
               <AssignmentCard
                 key={a.id}
                 assignment={a}
@@ -1167,37 +1509,59 @@ export default function AssignmentsPage() {
             totalItems={data?.total}
             hasNext={data?.hasNext ?? false}
             isLoading={isLoading}
-            onPrevious={() => setPage(c => Math.max(1, c - 1))}
-            onNext={() => setPage(c => c + 1)}
+            onPrevious={() => setPage((c) => Math.max(1, c - 1))}
+            onNext={() => setPage((c) => c + 1)}
           />
         </div>
       )}
 
       {/* Create Assignment Dialog */}
       <Dialog open={cO} onOpenChange={sCO}>
-        <DialogHeader><DialogTitle>{t.courseAssignments.newAssignment}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{t.courseAssignments.newAssignment}</DialogTitle>
+        </DialogHeader>
         <div className="space-y-3">
-          <div><Label>{t.courseAssignments.titleLabel}</Label><Input value={nT} onChange={e => sNT(e.target.value)} /></div>
-          <div><Label>{t.courseAssignments.descriptionLabel}</Label><Textarea value={nD} onChange={e => sND(e.target.value)} /></div>
+          <div>
+            <Label>{t.courseAssignments.titleLabel}</Label>
+            <Input value={nT} onChange={(e) => sNT(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-assignment-desc">{t.courseAssignments.descriptionLabel}</Label>
+            <MarkdownEditor id="new-assignment-desc" value={nD} onChange={sND} rows={5} />
+          </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><Label>{t.courseAssignments.dueDateLabel}</Label><Input type="datetime-local" value={nDu} onChange={e => sNDu(e.target.value)} /></div>
-            <div><Label>{t.courseAssignments.maxScoreLabel}</Label><Input type="number" value={nM} onChange={e => sNM(e.target.value)} /></div>
+            <div>
+              <Label>{t.courseAssignments.dueDateLabel}</Label>
+              <Input type="datetime-local" value={nDu} onChange={(e) => sNDu(e.target.value)} />
+            </div>
+            <div>
+              <Label>{t.courseAssignments.maxScoreLabel}</Label>
+              <Input type="number" value={nM} onChange={(e) => sNM(e.target.value)} />
+            </div>
           </div>
 
           {/* Resource files */}
           <div className="space-y-1.5">
-            <Label className="text-xs">Attach Resources <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Label className="text-xs">
+              Attach Resources <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
             <div
-              onDragOver={e => { e.preventDefault(); setResIsDrag(true); }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setResIsDrag(true);
+              }}
               onDragLeave={() => setResIsDrag(false)}
-              onDrop={e => {
-                e.preventDefault(); setResIsDrag(false);
-                setResFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
+              onDrop={(e) => {
+                e.preventDefault();
+                setResIsDrag(false);
+                setResFiles((prev) => [...prev, ...Array.from(e.dataTransfer.files)]);
               }}
               onClick={() => {
                 const inp = document.createElement('input');
-                inp.type = 'file'; inp.multiple = true;
-                inp.onchange = ev => setResFiles(prev => [...prev, ...Array.from((ev.target as HTMLInputElement).files || [])]);
+                inp.type = 'file';
+                inp.multiple = true;
+                inp.onchange = (ev) =>
+                  setResFiles((prev) => [...prev, ...Array.from((ev.target as HTMLInputElement).files || [])]);
                 inp.click();
               }}
               className={cn(
@@ -1208,18 +1572,39 @@ export default function AssignmentsPage() {
                   : 'border-border/60 dark:border-white/[0.1] hover:border-primary/40 hover:bg-muted/30',
               )}
             >
-              <Upload className={cn('mx-auto mb-1.5 transition-colors', resFiles.length > 0 ? 'h-4 w-4' : 'h-6 w-6', resIsDrag ? 'text-primary' : 'text-muted-foreground/50')} />
-              <p className="text-xs font-medium">{resIsDrag ? 'Drop files' : resFiles.length > 0 ? 'Add more' : 'Drag & drop or click'}</p>
-              {resFiles.length === 0 && <p className="text-[11px] text-muted-foreground mt-0.5">PDFs, slides, templates — up to 10</p>}
+              <Upload
+                className={cn(
+                  'mx-auto mb-1.5 transition-colors',
+                  resFiles.length > 0 ? 'h-4 w-4' : 'h-6 w-6',
+                  resIsDrag ? 'text-primary' : 'text-muted-foreground/50',
+                )}
+              />
+              <p className="text-xs font-medium">
+                {resIsDrag ? 'Drop files' : resFiles.length > 0 ? 'Add more' : 'Drag & drop or click'}
+              </p>
+              {resFiles.length === 0 && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">PDFs, slides, templates — up to 10</p>
+              )}
             </div>
             {resFiles.length > 0 && (
               <div className="space-y-1">
                 {resFiles.map((f, i) => (
-                  <div key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-md border border-border/50 dark:border-white/[0.07] bg-muted/20 px-2.5 py-1.5">
+                  <div
+                    key={`${f.name}-${i}`}
+                    className="flex items-center gap-2 rounded-md border border-border/50 dark:border-white/[0.07] bg-muted/20 px-2.5 py-1.5"
+                  >
                     <FileText className="h-3.5 w-3.5 text-primary/60 shrink-0" />
                     <span className="flex-1 min-w-0 text-xs truncate">{f.name}</span>
-                    <span className="text-[10px] text-muted-foreground shrink-0">{f.size >= 1048576 ? `${(f.size/1048576).toFixed(1)}MB` : `${(f.size/1024).toFixed(0)}KB`}</span>
-                    <button onClick={e => { e.stopPropagation(); setResFiles(prev => prev.filter((_, j) => j !== i)); }} className="shrink-0 p-0.5 text-muted-foreground hover:text-foreground rounded transition-colors">
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      {f.size >= 1048576 ? `${(f.size / 1048576).toFixed(1)}MB` : `${(f.size / 1024).toFixed(0)}KB`}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setResFiles((prev) => prev.filter((_, j) => j !== i));
+                      }}
+                      className="shrink-0 p-0.5 text-muted-foreground hover:text-foreground rounded transition-colors"
+                    >
                       <X className="h-3 w-3" />
                     </button>
                   </div>
@@ -1228,14 +1613,37 @@ export default function AssignmentsPage() {
             )}
           </div>
 
-          <Button className="w-full" onClick={() => cre.mutate({ title: nT, description: nD, dueAt: new Date(nDu).toISOString(), maxScore: parseInt(nM) })} disabled={!nT || !nDu || cre.isPending}>
-            {cre.isPending ? <><div className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin mr-1.5" />Creating…</> : t.courseAssignments.create}
+          <Button
+            className="w-full"
+            onClick={() =>
+              cre.mutate({ title: nT, description: nD, dueAt: new Date(nDu).toISOString(), maxScore: parseInt(nM) })
+            }
+            disabled={!nT || !nDu || cre.isPending}
+          >
+            {cre.isPending ? (
+              <>
+                <div className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin mr-1.5" />
+                Creating…
+              </>
+            ) : (
+              t.courseAssignments.create
+            )}
           </Button>
         </div>
       </Dialog>
 
       {/* Submit Dialog */}
-      <Dialog open={!!sO} onOpenChange={() => { sSO(null); sST(''); sSU(''); setSubTab('text'); setSubFiles([]); setUploadProgress(0); }}>
+      <Dialog
+        open={!!sO}
+        onOpenChange={() => {
+          sSO(null);
+          sST('');
+          sSU('');
+          setSubTab('text');
+          setSubFiles([]);
+          setUploadProgress(0);
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Send className="h-4 w-4 text-primary" />
@@ -1243,15 +1651,16 @@ export default function AssignmentsPage() {
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-1">
-
           {/* Tab switcher */}
           <div className="grid grid-cols-4 gap-1 rounded-lg bg-muted/50 dark:bg-white/[0.04] p-1">
-            {([
-              { k: 'text', label: 'Text',  Icon: AlignLeft    },
-              { k: 'file', label: 'Files', Icon: Paperclip    },
-              { k: 'link', label: 'Link',  Icon: ExternalLink },
-              { k: 'code', label: 'Code',  Icon: Code2        },
-            ] as const).map(({ k, label, Icon }) => (
+            {(
+              [
+                { k: 'text', label: 'Text', Icon: AlignLeft },
+                { k: 'file', label: 'Files', Icon: Paperclip },
+                { k: 'link', label: 'Link', Icon: ExternalLink },
+                { k: 'code', label: 'Code', Icon: Code2 },
+              ] as const
+            ).map(({ k, label, Icon }) => (
               <button
                 key={k}
                 onClick={() => setSubTab(k)}
@@ -1277,12 +1686,12 @@ export default function AssignmentsPage() {
           {subTab === 'text' && (
             <div className="space-y-1.5">
               <Label className="text-xs">{t.courseAssignments.yourAnswer}</Label>
-              <Textarea
-                value={sT} onChange={e => sST(e.target.value)}
-                rows={6} placeholder="Write your answer here…"
-                className="resize-none text-sm"
+              <MarkdownEditor
+                value={sT}
+                onChange={sST}
+                rows={7}
+                placeholder="Write your answer here — Markdown is supported (bold, lists, links, code blocks)."
               />
-              <p className="text-right text-[11px] text-muted-foreground">{sT.length} chars</p>
             </div>
           )}
 
@@ -1293,21 +1702,26 @@ export default function AssignmentsPage() {
 
               {/* Drop zone */}
               <div
-                onDragOver={e => { e.preventDefault(); setIsDrag(true); }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDrag(true);
+                }}
                 onDragLeave={() => setIsDrag(false)}
-                onDrop={e => {
-                  e.preventDefault(); setIsDrag(false);
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDrag(false);
                   const dropped = Array.from(e.dataTransfer.files);
-                  setSubFiles(prev => [...prev, ...dropped]);
+                  setSubFiles((prev) => [...prev, ...dropped]);
                 }}
                 onClick={() => {
                   const inp = document.createElement('input');
                   inp.type = 'file';
                   inp.multiple = true;
-                  inp.accept = '.pdf,.doc,.docx,.zip,.txt,.py,.js,.ts,.tsx,.jsx,.png,.jpg,.jpeg,.gif,.webp,.csv,.json,.md';
-                  inp.onchange = ev => {
+                  inp.accept =
+                    '.pdf,.doc,.docx,.zip,.txt,.py,.js,.ts,.tsx,.jsx,.png,.jpg,.jpeg,.gif,.webp,.csv,.json,.md';
+                  inp.onchange = (ev) => {
                     const picked = Array.from((ev.target as HTMLInputElement).files || []);
-                    setSubFiles(prev => [...prev, ...picked]);
+                    setSubFiles((prev) => [...prev, ...picked]);
                   };
                   inp.click();
                 }}
@@ -1320,10 +1734,24 @@ export default function AssignmentsPage() {
                 )}
               >
                 <motion.div animate={{ scale: isDrag ? 1.1 : 1 }} transition={{ duration: 0.15 }}>
-                  <Upload className={cn('mx-auto mb-2 transition-colors', subFiles.length > 0 ? 'h-5 w-5' : 'h-8 w-8 mb-2.5', isDrag ? 'text-primary' : 'text-muted-foreground/50')} />
+                  <Upload
+                    className={cn(
+                      'mx-auto mb-2 transition-colors',
+                      subFiles.length > 0 ? 'h-5 w-5' : 'h-8 w-8 mb-2.5',
+                      isDrag ? 'text-primary' : 'text-muted-foreground/50',
+                    )}
+                  />
                 </motion.div>
-                <p className="text-sm font-medium">{isDrag ? 'Drop files here' : subFiles.length > 0 ? 'Add more files' : 'Drag & drop or click to browse'}</p>
-                {subFiles.length === 0 && <p className="mt-1 text-xs text-muted-foreground">PDF, DOCX, ZIP, images, code — up to 10 files</p>}
+                <p className="text-sm font-medium">
+                  {isDrag
+                    ? 'Drop files here'
+                    : subFiles.length > 0
+                      ? 'Add more files'
+                      : 'Drag & drop or click to browse'}
+                </p>
+                {subFiles.length === 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">PDF, DOCX, ZIP, images, code — up to 10 files</p>
+                )}
               </div>
 
               {/* File list */}
@@ -1331,10 +1759,13 @@ export default function AssignmentsPage() {
                 <div className="space-y-1.5">
                   {subFiles.map((f, i) => {
                     const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
-                    const isImage = ['png','jpg','jpeg','gif','webp'].includes(ext);
-                    const isArchive = ['zip','tar','gz','rar'].includes(ext);
+                    const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext);
+                    const isArchive = ['zip', 'tar', 'gz', 'rar'].includes(ext);
                     const FileIco = isImage ? ImageIcon : isArchive ? Archive : ext === 'pdf' ? FileText : FileIcon;
-                    const sizeStr = f.size >= 1024 * 1024 ? `${(f.size / (1024*1024)).toFixed(1)} MB` : `${(f.size / 1024).toFixed(1)} KB`;
+                    const sizeStr =
+                      f.size >= 1024 * 1024
+                        ? `${(f.size / (1024 * 1024)).toFixed(1)} MB`
+                        : `${(f.size / 1024).toFixed(1)} KB`;
                     return (
                       <motion.div
                         key={`${f.name}-${i}`}
@@ -1348,10 +1779,15 @@ export default function AssignmentsPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium truncate text-foreground">{f.name}</p>
-                          <p className="text-[10px] text-muted-foreground">{sizeStr} · {ext.toUpperCase()}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {sizeStr} · {ext.toUpperCase()}
+                          </p>
                         </div>
                         <button
-                          onClick={e => { e.stopPropagation(); setSubFiles(prev => prev.filter((_, idx) => idx !== i)); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSubFiles((prev) => prev.filter((_, idx) => idx !== i));
+                          }}
                           className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                         >
                           <X className="h-3.5 w-3.5" />
@@ -1368,16 +1804,25 @@ export default function AssignmentsPage() {
                   <div className="flex justify-between text-[11px] text-muted-foreground">
                     <span className="flex items-center gap-1.5">
                       {uploadProgress < 100 || sub.isPending ? (
-                        <><div className="h-2.5 w-2.5 rounded-full border-2 border-primary border-t-transparent animate-spin" />Uploading…</>
+                        <>
+                          <div className="h-2.5 w-2.5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                          Uploading…
+                        </>
                       ) : (
-                        <><CheckCircle2 className="h-2.5 w-2.5 text-emerald-500" /><span className="text-emerald-600 dark:text-emerald-400">Upload complete</span></>
+                        <>
+                          <CheckCircle2 className="h-2.5 w-2.5 text-emerald-500" />
+                          <span className="text-emerald-600 dark:text-emerald-400">Upload complete</span>
+                        </>
                       )}
                     </span>
                     <span className="font-medium tabular-nums">{uploadProgress}%</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                     <motion.div
-                      className={cn('h-full rounded-full', uploadProgress === 100 && !sub.isPending ? 'bg-emerald-500' : 'bg-primary')}
+                      className={cn(
+                        'h-full rounded-full',
+                        uploadProgress === 100 && !sub.isPending ? 'bg-emerald-500' : 'bg-primary',
+                      )}
                       initial={{ width: '0%' }}
                       animate={{ width: `${uploadProgress}%` }}
                       transition={{ ease: 'linear', duration: 0.1 }}
@@ -1396,7 +1841,8 @@ export default function AssignmentsPage() {
                 <div className="relative">
                   <ExternalLink className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                   <Input
-                    value={sU} onChange={e => sSU(e.target.value)}
+                    value={sU}
+                    onChange={(e) => sSU(e.target.value)}
                     placeholder="https://…"
                     className="pl-9 text-sm"
                   />
@@ -1406,8 +1852,10 @@ export default function AssignmentsPage() {
               <div className="space-y-1.5">
                 <Label className="text-xs">Notes (optional)</Label>
                 <Textarea
-                  value={sT} onChange={e => sST(e.target.value)}
-                  rows={3} placeholder="Describe your work or add context…"
+                  value={sT}
+                  onChange={(e) => sST(e.target.value)}
+                  rows={3}
+                  placeholder="Describe your work or add context…"
                   className="resize-none text-sm"
                 />
               </div>
@@ -1419,11 +1867,15 @@ export default function AssignmentsPage() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label className="text-xs">Code Snippet</Label>
-                <span className="font-mono text-[10px] text-muted-foreground/60 bg-muted/40 px-2 py-0.5 rounded">plain text</span>
+                <span className="font-mono text-[10px] text-muted-foreground/60 bg-muted/40 px-2 py-0.5 rounded">
+                  plain text
+                </span>
               </div>
               <Textarea
-                value={sT} onChange={e => sST(e.target.value)}
-                rows={10} placeholder="// Paste or type your code here…"
+                value={sT}
+                onChange={(e) => sST(e.target.value)}
+                rows={10}
+                placeholder="// Paste or type your code here…"
                 className="font-mono text-xs resize-none bg-muted/20 dark:bg-black/20 dark:border-white/[0.06] leading-relaxed"
               />
               <p className="text-right text-[11px] text-muted-foreground">{sT.length} chars</p>
@@ -1436,14 +1888,13 @@ export default function AssignmentsPage() {
               <Button
                 variant="outline"
                 className="gap-1.5 h-9 text-xs"
-                onClick={() => draft.mutate({ aid: sO!, d: { contentText: sT || undefined, contentUrl: sU || undefined } })}
+                onClick={() =>
+                  draft.mutate({ aid: sO!, d: { contentText: sT || undefined, contentUrl: sU || undefined } })
+                }
                 disabled={draft.isPending || (!sT && !sU)}
                 title="Save without submitting"
               >
-                {draft.isPending
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <Save className="h-3.5 w-3.5" />
-                }
+                {draft.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                 Save Draft
               </Button>
             )}
@@ -1464,10 +1915,16 @@ export default function AssignmentsPage() {
                 (subTab === 'code' && !sT)
               }
             >
-              {sub.isPending
-                ? <><div className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" /> Submitting…</>
-                : <><Send className="h-3.5 w-3.5" /> {t.courseAssignments.submit}</>
-              }
+              {sub.isPending ? (
+                <>
+                  <div className="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />{' '}
+                  Submitting…
+                </>
+              ) : (
+                <>
+                  <Send className="h-3.5 w-3.5" /> {t.courseAssignments.submit}
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -1510,71 +1967,89 @@ export default function AssignmentsPage() {
                   </span>
                   <span className="font-mono">{t.courseAssignments.aiFeedbackLoading}</span>
                 </div>
-                {[1, 2, 3].map(i => <Skeleton key={i} className="h-3 w-full" />)}
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-3 w-full" />
+                ))}
               </div>
-            ) : aiFeedback && (
-              <div className="space-y-4">
-                <div className="rounded-[8px] bg-[var(--bg-subtle)] p-3 text-[13px] leading-[1.55] border border-[var(--border-color)] text-[var(--fg)]">
-                  {aiFeedback.assessment}
+            ) : (
+              aiFeedback && (
+                <div className="space-y-4">
+                  <div className="rounded-[8px] bg-[var(--bg-subtle)] p-3 text-[13px] leading-[1.55] border border-[var(--border-color)] text-[var(--fg)]">
+                    {aiFeedback.assessment}
+                  </div>
+                  {aiFeedback.strengths.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.10em] flex items-center gap-1.5 text-[var(--success)]">
+                        <CheckCircle2 className="h-3 w-3" /> {t.courseAssignments.strengths}
+                      </p>
+                      <ul className="space-y-1">
+                        {aiFeedback.strengths.map((s, i) => (
+                          <li key={i} className="text-[13px] flex items-start gap-2 text-[var(--fg)] leading-[1.55]">
+                            <span className="text-[var(--success)] mt-0.5">•</span>
+                            {s}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {aiFeedback.improvements.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.10em] flex items-center gap-1.5 text-[var(--warning)]">
+                        <AlertCircle className="h-3 w-3" /> {t.courseAssignments.improvements}
+                      </p>
+                      <ul className="space-y-1">
+                        {aiFeedback.improvements.map((s, i) => (
+                          <li key={i} className="text-[13px] flex items-start gap-2 text-[var(--fg)] leading-[1.55]">
+                            <span className="text-[var(--warning)] mt-0.5">•</span>
+                            {s}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {aiFeedback.suggestions.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="font-mono text-[10px] uppercase tracking-[0.10em] flex items-center gap-1.5 text-[var(--info)]">
+                        <Lightbulb className="h-3 w-3" /> {t.courseAssignments.suggestions}
+                      </p>
+                      <ul className="space-y-1">
+                        {aiFeedback.suggestions.map((s, i) => (
+                          <li key={i} className="text-[13px] flex items-start gap-2 text-[var(--fg)] leading-[1.55]">
+                            <span className="text-[var(--info)] mt-0.5">•</span>
+                            {s}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-[var(--fg-subtle)] font-mono flex items-center gap-1 pt-2 border-t border-[var(--border-color)]">
+                    <TrendingUp className="h-3 w-3" />
+                    {t.courseAssignments.aiDisclaimer}
+                  </p>
                 </div>
-                {aiFeedback.strengths.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.10em] flex items-center gap-1.5 text-[var(--success)]">
-                      <CheckCircle2 className="h-3 w-3" /> {t.courseAssignments.strengths}
-                    </p>
-                    <ul className="space-y-1">
-                      {aiFeedback.strengths.map((s, i) => (
-                        <li key={i} className="text-[13px] flex items-start gap-2 text-[var(--fg)] leading-[1.55]">
-                          <span className="text-[var(--success)] mt-0.5">•</span>{s}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {aiFeedback.improvements.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.10em] flex items-center gap-1.5 text-[var(--warning)]">
-                      <AlertCircle className="h-3 w-3" /> {t.courseAssignments.improvements}
-                    </p>
-                    <ul className="space-y-1">
-                      {aiFeedback.improvements.map((s, i) => (
-                        <li key={i} className="text-[13px] flex items-start gap-2 text-[var(--fg)] leading-[1.55]">
-                          <span className="text-[var(--warning)] mt-0.5">•</span>{s}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {aiFeedback.suggestions.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.10em] flex items-center gap-1.5 text-[var(--info)]">
-                      <Lightbulb className="h-3 w-3" /> {t.courseAssignments.suggestions}
-                    </p>
-                    <ul className="space-y-1">
-                      {aiFeedback.suggestions.map((s, i) => (
-                        <li key={i} className="text-[13px] flex items-start gap-2 text-[var(--fg)] leading-[1.55]">
-                          <span className="text-[var(--info)] mt-0.5">•</span>{s}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <p className="text-[11px] text-[var(--fg-subtle)] font-mono flex items-center gap-1 pt-2 border-t border-[var(--border-color)]">
-                  <TrendingUp className="h-3 w-3" />{t.courseAssignments.aiDisclaimer}
-                </p>
-              </div>
+              )
             )}
           </div>
         </div>
       </Dialog>
 
       {/* AI Explain Dialog */}
-      <Dialog open={aiExplainOpen} onOpenChange={v => { if (!v) { aiExplainAbort.current?.abort(); } setAiExplainOpen(v); }}>
+      <Dialog
+        open={aiExplainOpen}
+        onOpenChange={(v) => {
+          if (!v) {
+            aiExplainAbort.current?.abort();
+          }
+          setAiExplainOpen(v);
+        }}
+      >
         <div className="p-6 max-h-[80vh] overflow-y-auto space-y-4">
           <div className="flex items-center gap-2.5">
             <div
               className="w-7 h-7 rounded-[8px] flex items-center justify-center text-white shrink-0"
-              style={{ background: 'linear-gradient(135deg, var(--info), color-mix(in oklch, var(--info), black 20%))' }}
+              style={{
+                background: 'linear-gradient(135deg, var(--info), color-mix(in oklch, var(--info), black 20%))',
+              }}
             >
               <Brain className="h-3.5 w-3.5" />
             </div>
@@ -1609,7 +2084,8 @@ export default function AssignmentsPage() {
           )}
 
           <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground pt-1 border-t border-border/40">
-            <TrendingUp className="h-3 w-3" />AI-generated explanation. Use as a guide, not a final answer.
+            <TrendingUp className="h-3 w-3" />
+            AI-generated explanation. Use as a guide, not a final answer.
           </p>
         </div>
       </Dialog>

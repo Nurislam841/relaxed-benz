@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  backend:
+    name: Backend — build, lint, test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: unilms_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/unilms_test?schema=public
+      JWT_SECRET: ci-jwt-secret-at-least-32-characters-long-xxxxxxxx
+      JWT_REFRESH_SECRET: ci-jwt-refresh-secret-at-least-32-chars-xxxxx
+      JWT_EXPIRATION: 15m
+      JWT_REFRESH_EXPIRATION: 7d
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Generate Prisma client
+        run: pnpm --filter @uni-lms/backend exec prisma generate
+
+      - name: Apply DB migrations
+        run: pnpm --filter @uni-lms/backend exec prisma migrate deploy
+
+      - name: Typecheck
+        run: pnpm --filter @uni-lms/backend typecheck
+
+      - name: Build
+        run: pnpm --filter @uni-lms/backend build
+
+      - name: Test
+        run: pnpm --filter @uni-lms/backend test
+
+  frontend:
+    name: Frontend — build & typecheck
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Typecheck
+        run: pnpm --filter @uni-lms/frontend typecheck
+
+      - name: Build
+        run: pnpm --filter @uni-lms/frontend build

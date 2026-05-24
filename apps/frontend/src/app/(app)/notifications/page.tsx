@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Skeleton } from '@/components/ui/form-elements';
 import { Eyebrow } from '@/components/ds/eyebrow';
 import { HDisplay } from '@/components/ds/h-display';
+import { EmptyState } from '@/components/ds/empty-state';
 import { useT } from '@/lib/i18n';
 import { getNotificationContent } from '@/lib/notification-content';
 
@@ -41,14 +42,16 @@ export default function NotificationsPage() {
     },
   });
 
-  const unread = notifications.filter(n => !n.isRead).length;
+  const unread = notifications.filter((n) => !n.isRead).length;
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div className="space-y-1.5">
           <Eyebrow>Inbox</Eyebrow>
-          <HDisplay size="md" as="h1">{t.notifications.title}</HDisplay>
+          <HDisplay size="md" as="h1">
+            {t.notifications.title}
+          </HDisplay>
           {unread > 0 && (
             <p className="text-[13px] text-[var(--fg-muted)] font-mono">
               {unread} {t.notifications.unread}
@@ -70,7 +73,9 @@ export default function NotificationsPage() {
 
       {isLoading && (
         <div className="space-y-2">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
         </div>
       )}
 
@@ -79,10 +84,12 @@ export default function NotificationsPage() {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.3 }}
-          className="text-center py-20 text-muted-foreground"
         >
-          <Bell className="h-9 w-9 mx-auto mb-3 opacity-20" />
-          <p className="text-sm">{t.notifications.empty}</p>
+          <EmptyState
+            icon={Bell}
+            title={t.notifications.empty}
+            description="When you receive an assignment, grade, or announcement, it will appear here."
+          />
         </motion.div>
       )}
 
@@ -93,7 +100,7 @@ export default function NotificationsPage() {
         variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
       >
         <AnimatePresence>
-          {notifications.map(n => (
+          {notifications.map((n) =>
             (() => {
               const content = getNotificationContent(n, t);
               return (
@@ -119,9 +126,7 @@ export default function NotificationsPage() {
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-medium text-[var(--fg)]">{content.title}</p>
-                        {content.body && (
-                          <p className="text-[12px] text-[var(--fg-muted)] mt-0.5">{content.body}</p>
-                        )}
+                        {content.body && <p className="text-[12px] text-[var(--fg-muted)] mt-0.5">{content.body}</p>}
                         <p className="text-[11px] text-[var(--fg-subtle)] font-mono mt-1.5">
                           {formatDateTime(n.createdAt)}
                         </p>
@@ -130,8 +135,8 @@ export default function NotificationsPage() {
                   </Card>
                 </motion.div>
               );
-            })()
-          ))}
+            })(),
+          )}
         </AnimatePresence>
       </motion.div>
     </div>

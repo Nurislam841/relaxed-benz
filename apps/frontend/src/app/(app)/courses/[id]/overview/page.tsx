@@ -18,6 +18,22 @@ import { toast } from '@/hooks/use-toast';
 import { formatDateTime } from '@/lib/utils';
 import { useLanguage, useT } from '@/lib/i18n';
 import { getAnnouncementContent } from '@/lib/announcement-content';
+import dynamic from 'next/dynamic';
+
+// Markdown editor/view ship react-markdown + remark-gfm (~80KB). They're only
+// used when the user clicks "Post announcement" or renders an existing post,
+// so defer them until after the page is interactive.
+const MarkdownEditor = dynamic(
+  () => import('@/components/markdown/markdown-editor').then((m) => ({ default: m.MarkdownEditor })),
+  {
+    ssr: false,
+    loading: () => <div className="h-24 rounded-md bg-[var(--bg-subtle)] animate-pulse" />,
+  },
+);
+const MarkdownView = dynamic(
+  () => import('@/components/markdown/markdown-view').then((m) => ({ default: m.MarkdownView })),
+  { ssr: false },
+);
 
 export default function OverviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -43,8 +59,7 @@ export default function OverviewPage() {
   });
 
   const post = useMutation({
-    mutationFn: (d: { title: string; body: string }) =>
-      api.post(`/courses/${id}/announcements`, d),
+    mutationFn: (d: { title: string; body: string }) => api.post(`/courses/${id}/announcements`, d),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['c-anns', id] });
       toast({ title: t.courseOverview.posted });
@@ -52,8 +67,7 @@ export default function OverviewPage() {
       setBody('');
       setShow(false);
     },
-    onError: (e: any) =>
-      toast({ title: t.common.error, description: e.message, variant: 'destructive' }),
+    onError: (e: any) => toast({ title: t.common.error, description: e.message, variant: 'destructive' }),
   });
 
   const handleSummary = async () => {
@@ -117,13 +131,14 @@ export default function OverviewPage() {
             padding="lg"
             className="border-[var(--accent-200)]"
             style={{
-              background:
-                'linear-gradient(180deg, var(--accent-50), var(--surface))',
+              background: 'linear-gradient(180deg, var(--accent-50), var(--surface))',
             }}
           >
             <div className="space-y-3">
               <ThinkingDots label={t.courseOverview.generatingSummary} />
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-3 w-full" />)}
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-3 w-full" />
+              ))}
             </div>
           </Card>
         )}
@@ -141,8 +156,7 @@ export default function OverviewPage() {
               aria-hidden
               className="absolute -top-5 -right-5 w-[160px] h-[160px] rounded-full pointer-events-none opacity-50"
               style={{
-                background:
-                  'radial-gradient(circle, var(--accent-200), transparent 60%)',
+                background: 'radial-gradient(circle, var(--accent-200), transparent 60%)',
               }}
             />
             <div className="relative space-y-4">
@@ -151,17 +165,16 @@ export default function OverviewPage() {
                   <div
                     className="w-6 h-6 rounded-[7px] flex items-center justify-center text-white"
                     style={{
-                      background:
-                        'linear-gradient(135deg, var(--accent-500), var(--accent-700))',
+                      background: 'linear-gradient(135deg, var(--accent-500), var(--accent-700))',
                     }}
                   >
                     <Sparkles className="w-3 h-3" />
                   </div>
-                  <span className="text-[13px] font-semibold text-[var(--fg)]">
-                    {t.courseOverview.aiSummary}
-                  </span>
+                  <span className="text-[13px] font-semibold text-[var(--fg)]">{t.courseOverview.aiSummary}</span>
                   {(summary as any)._demo && (
-                    <Badge tone="accent" variant="soft">{t.courseOverview.demo}</Badge>
+                    <Badge tone="accent" variant="soft">
+                      {t.courseOverview.demo}
+                    </Badge>
                   )}
                 </div>
                 <Badge tone={workloadTone[summary.workload] ?? 'neutral'}>
@@ -231,21 +244,12 @@ export default function OverviewPage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
-              <Textarea
-                placeholder={t.courseOverview.bodyPlaceholder}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                rows={3}
-              />
+              <MarkdownEditor placeholder={t.courseOverview.bodyPlaceholder} value={body} onChange={setBody} rows={4} />
               <div className="flex gap-2 justify-end">
                 <Button variant="ghost" onClick={() => setShow(false)}>
                   {t.common.cancel}
                 </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => post.mutate({ title, body })}
-                  disabled={!title || !body}
-                >
+                <Button variant="primary" onClick={() => post.mutate({ title, body })} disabled={!title || !body}>
                   <Send className="h-3.5 w-3.5" />
                   {t.common.post}
                 </Button>
@@ -261,7 +265,9 @@ export default function OverviewPage() {
         </div>
         {isLoading ? (
           <div className="space-y-3">
-            {[1, 2].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
+            {[1, 2].map((i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
           </div>
         ) : !anns?.length ? (
           <Card className="flex flex-col items-center py-12 text-center gap-3 border-dashed">
@@ -269,9 +275,7 @@ export default function OverviewPage() {
               <MessageSquare className="h-5 w-5 text-[var(--fg-subtle)]" />
             </div>
             <div className="space-y-1">
-              <p className="text-[13px] font-medium text-[var(--fg)]">
-                {t.courseOverview.noAnnouncements}
-              </p>
+              <p className="text-[13px] font-medium text-[var(--fg)]">{t.courseOverview.noAnnouncements}</p>
               <p className="text-[12px] text-[var(--fg-muted)] max-w-xs">
                 {canPost
                   ? 'Post the first update to keep your students informed.'
@@ -293,15 +297,13 @@ export default function OverviewPage() {
               const content = getAnnouncementContent(a, lang);
               return (
                 <Card key={a.id} padding="md" hoverable>
-                  <h3 className="text-[14px] font-semibold text-[var(--fg)]">
-                    {content.title}
-                  </h3>
+                  <h3 className="text-[14px] font-semibold text-[var(--fg)]">{content.title}</h3>
                   <p className="text-[11px] text-[var(--fg-muted)] font-mono mt-0.5">
                     {(a as any).author?.fullName} · {formatDateTime(a.createdAt)}
                   </p>
-                  <p className="text-[13px] mt-2 text-[var(--fg-muted)] whitespace-pre-wrap leading-[1.55]">
-                    {content.body}
-                  </p>
+                  <div className="mt-2 text-[var(--fg-muted)]">
+                    <MarkdownView source={content.body} compact />
+                  </div>
                 </Card>
               );
             })}

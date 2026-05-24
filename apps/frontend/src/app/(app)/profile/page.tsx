@@ -13,6 +13,8 @@ import { Label } from '@/components/ui/form-elements';
 import { KeyRound, Mail, ShieldCheck, UserCircle2, Users, Sliders } from 'lucide-react';
 import type { User } from '@/lib/types';
 import { DensityToggle } from '@/components/ds/density-toggle';
+import { TwoFactorCard } from '@/components/two-factor-card';
+import { TelegramCard } from '@/components/telegram-card';
 
 const roleVariant = {
   ADMIN: 'destructive',
@@ -45,7 +47,7 @@ export default function ProfilePage() {
 
   const updateProfile = useMutation({
     mutationFn: (payload: { fullName: string; email: string }) => api.patch<User>('/me/profile', payload),
-    onSuccess: async data => {
+    onSuccess: async (data) => {
       await qc.invalidateQueries({ queryKey: ['me'] });
       qc.setQueryData(['me'], data);
       toast({ title: t.profile.updateSuccess });
@@ -95,9 +97,7 @@ export default function ProfilePage() {
   return (
     <div className="max-w-4xl space-y-6">
       <div className="space-y-1.5">
-        <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">
-          Account
-        </span>
+        <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">Account</span>
         <h1 className="font-serif text-[36px] tracking-[-0.015em] leading-[1.05] text-[var(--fg)]">
           {t.profile.title}
         </h1>
@@ -153,12 +153,12 @@ export default function ProfilePage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>{t.profile.fullName}</Label>
-              <Input value={fullName} onChange={e => setFullName(e.target.value)} />
+              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
             </div>
 
             <div className="space-y-2">
               <Label>{t.profile.email}</Label>
-              <Input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
 
             <div className="space-y-2">
@@ -192,17 +192,17 @@ export default function ProfilePage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>{t.profile.currentPassword}</Label>
-              <Input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
+              <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
             </div>
 
             <div className="space-y-2">
               <Label>{t.profile.newPassword}</Label>
-              <Input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+              <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
             </div>
 
             <div className="space-y-2">
               <Label>{t.profile.confirmPassword}</Label>
-              <Input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
+              <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
             </div>
 
             <Button
@@ -217,6 +217,12 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Two-factor authentication */}
+      <TwoFactorCard />
+
+      {/* Telegram notifications */}
+      <TelegramCard />
 
       {/* Display preferences */}
       <Card>

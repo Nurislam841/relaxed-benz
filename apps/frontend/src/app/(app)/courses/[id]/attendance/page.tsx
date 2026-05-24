@@ -10,7 +10,19 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { useState } from 'react';
 import { formatDate } from '@/lib/utils';
-import { CheckCircle2, XCircle, Clock, UserCheck, Download, CalendarCheck, BarChart3, TrendingUp, Users, PlayCircle } from 'lucide-react';
+import {
+  CheckCircle2,
+  XCircle,
+  Clock,
+  UserCheck,
+  Download,
+  CalendarCheck,
+  BarChart3,
+  TrendingUp,
+  Users,
+  PlayCircle,
+  FileText,
+} from 'lucide-react';
 import { useT } from '@/lib/i18n';
 import { downloadCsv } from '@/lib/csv';
 import { motion } from 'framer-motion';
@@ -37,7 +49,7 @@ export default function AttendancePage() {
   const qc = useQueryClient();
   const t = useT();
 
-  const [tab, setTab] = useState<'records'|'stats'>('records');
+  const [tab, setTab] = useState<'records' | 'stats'>('records');
 
   const { data: records, isLoading } = useQuery<Attendance[]>({
     queryKey: ['attendance', id],
@@ -70,25 +82,34 @@ export default function AttendancePage() {
     enabled: canMark,
   });
 
-  const enrolledStudents = (participants || []).filter(p => p.roleInCourse === 'STUDENT');
+  const enrolledStudents = (participants || []).filter((p) => p.roleInCourse === 'STUDENT');
 
   const startSessionMutation = useMutation({
     mutationFn: async () => {
       await Promise.all(
-        enrolledStudents.map(s =>
-          api.post(`/courses/${id}/attendance`, { studentId: s.userId, date: today, status: 'PRESENT' })
-        )
+        enrolledStudents.map((s) =>
+          api.post(`/courses/${id}/attendance`, { studentId: s.userId, date: today, status: 'PRESENT' }),
+        ),
       );
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['attendance', id] });
       qc.invalidateQueries({ queryKey: ['attendance-stats', id] });
-      toast({ title: `Session started — ${enrolledStudents.length} student${enrolledStudents.length !== 1 ? 's' : ''} marked Present.` });
+      toast({
+        title: `Session started — ${enrolledStudents.length} student${enrolledStudents.length !== 1 ? 's' : ''} marked Present.`,
+      });
     },
     onError: () => toast({ title: t.common.error, variant: 'destructive' }),
   });
 
-  if (isLoading) return <div className="space-y-3">{[1,2,3].map(i=><div key={i} className="h-14 bg-muted animate-pulse rounded-lg"/>)}</div>;
+  if (isLoading)
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-14 bg-muted animate-pulse rounded-lg" />
+        ))}
+      </div>
+    );
 
   // Group records by date
   const byDate = (records || []).reduce<Record<string, Attendance[]>>((acc, r) => {
@@ -99,9 +120,9 @@ export default function AttendancePage() {
   }, {});
 
   // Student stats view
-  const myStats = isStudent ? statsRaw as AttendanceStats | undefined : undefined;
+  const myStats = isStudent ? (statsRaw as AttendanceStats | undefined) : undefined;
   // Teacher stats view (array per student)
-  const studentStats = canMark ? statsRaw as StudentAttendanceStat[] | undefined : undefined;
+  const studentStats = canMark ? (statsRaw as StudentAttendanceStat[] | undefined) : undefined;
   const statusLabel = {
     PRESENT: t.attendance.present,
     LATE: t.attendance.late,
@@ -131,7 +152,7 @@ export default function AttendancePage() {
           t.courseAttendance.exportAbsent,
           t.courseAttendance.exportPresentRate,
         ],
-        studentStats.map(student => [
+        studentStats.map((student) => [
           student.student.fullName,
           student.student.email || '',
           student.total,
@@ -159,7 +180,7 @@ export default function AttendancePage() {
         t.courseAttendance.exportEmail,
         t.courseAttendance.exportStatus,
       ],
-      records.map(record => [
+      records.map((record) => [
         formatDate(record.date),
         record.student?.fullName || record.studentId,
         record.student?.email || '',
@@ -176,13 +197,31 @@ export default function AttendancePage() {
         <h2 className="text-[20px] font-semibold tracking-[-0.01em] text-[var(--fg)]">{t.attendance.title}</h2>
         <div className="flex flex-wrap gap-1">
           {canMark && (
-            <Button size="sm" variant="outline" onClick={exportCsv} className="gap-2">
-              <Download className="h-4 w-4" />
-              {t.common.export}
-            </Button>
+            <>
+              <a href={`/api/courses/${id}/attendance.pdf`} download>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  className="gap-2"
+                  title="Download printable PDF attendance summary"
+                >
+                  <FileText className="h-4 w-4" />
+                  PDF
+                </Button>
+              </a>
+              <Button size="sm" variant="outline" onClick={exportCsv} className="gap-2">
+                <Download className="h-4 w-4" />
+                {t.common.export}
+              </Button>
+            </>
           )}
-          <Button size="sm" variant={tab === 'records' ? 'default' : 'outline'} onClick={() => setTab('records')}>{t.courseAttendance.recordsTab}</Button>
-          <Button size="sm" variant={tab === 'stats' ? 'default' : 'outline'} onClick={() => setTab('stats')}>{t.courseAttendance.statsTab}</Button>
+          <Button size="sm" variant={tab === 'records' ? 'default' : 'outline'} onClick={() => setTab('records')}>
+            {t.courseAttendance.recordsTab}
+          </Button>
+          <Button size="sm" variant={tab === 'stats' ? 'default' : 'outline'} onClick={() => setTab('stats')}>
+            {t.courseAttendance.statsTab}
+          </Button>
         </div>
       </div>
 
@@ -192,12 +231,36 @@ export default function AttendancePage() {
           {isStudent && myStats && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <StatBadge label={t.courseAttendance.sessions} value={myStats.total} color="bg-slate-100 text-slate-700 dark:bg-white/[0.06] dark:text-slate-300"/>
-                <StatBadge label={t.attendance.presentRate} value={`${myStats.presentRate}%`} color="bg-green-50 text-green-700 dark:bg-green-500/[0.12] dark:text-green-300"/>
-                <StatBadge label={t.attendance.present} value={myStats.present} color="bg-green-100 text-green-800 dark:bg-green-500/[0.15] dark:text-green-300"/>
-                <StatBadge label={t.attendance.late} value={myStats.late} color="bg-yellow-100 text-yellow-800 dark:bg-amber-500/[0.15] dark:text-amber-300"/>
-                <StatBadge label={t.attendance.absent} value={myStats.absent} color="bg-red-100 text-red-800 dark:bg-red-500/[0.15] dark:text-red-300"/>
-                <StatBadge label={t.courseAttendance.absentRate} value={`${myStats.absentRate}%`} color="bg-red-50 text-red-700 dark:bg-red-500/[0.12] dark:text-red-300"/>
+                <StatBadge
+                  label={t.courseAttendance.sessions}
+                  value={myStats.total}
+                  color="bg-slate-100 text-slate-700 dark:bg-white/[0.06] dark:text-slate-300"
+                />
+                <StatBadge
+                  label={t.attendance.presentRate}
+                  value={`${myStats.presentRate}%`}
+                  color="bg-green-50 text-green-700 dark:bg-green-500/[0.12] dark:text-green-300"
+                />
+                <StatBadge
+                  label={t.attendance.present}
+                  value={myStats.present}
+                  color="bg-green-100 text-green-800 dark:bg-green-500/[0.15] dark:text-green-300"
+                />
+                <StatBadge
+                  label={t.attendance.late}
+                  value={myStats.late}
+                  color="bg-yellow-100 text-yellow-800 dark:bg-amber-500/[0.15] dark:text-amber-300"
+                />
+                <StatBadge
+                  label={t.attendance.absent}
+                  value={myStats.absent}
+                  color="bg-red-100 text-red-800 dark:bg-red-500/[0.15] dark:text-red-300"
+                />
+                <StatBadge
+                  label={t.courseAttendance.absentRate}
+                  value={`${myStats.absentRate}%`}
+                  color="bg-red-50 text-red-700 dark:bg-red-500/[0.12] dark:text-red-300"
+                />
               </div>
               {myStats.total === 0 && (
                 <motion.div
@@ -233,24 +296,43 @@ export default function AttendancePage() {
                     Start marking attendance in the Records tab and statistics will appear here.
                   </p>
                 </motion.div>
-              ) : studentStats.map(s => (
-                <Card key={s.student.id}>
-                  <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">{s.student.fullName}</p>
-                      <p className="text-xs text-muted-foreground">{s.student.email}</p>
-                    </div>
-                    <div className="flex gap-3 text-center text-xs shrink-0">
-                      <div className="text-green-700"><CheckCircle2 className="h-4 w-4 mx-auto"/>{s.present}</div>
-                      <div className="text-yellow-700"><Clock className="h-4 w-4 mx-auto"/>{s.late}</div>
-                      <div className="text-red-700"><XCircle className="h-4 w-4 mx-auto"/>{s.absent}</div>
-                    </div>
-                    <Badge className={s.presentRate >= 75 ? 'bg-green-100 text-green-800' : s.presentRate >= 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}>
-                      {s.presentRate}%
-                    </Badge>
-                  </CardContent>
-                </Card>
-              ))}
+              ) : (
+                studentStats.map((s) => (
+                  <Card key={s.student.id}>
+                    <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{s.student.fullName}</p>
+                        <p className="text-xs text-muted-foreground">{s.student.email}</p>
+                      </div>
+                      <div className="flex gap-3 text-center text-xs shrink-0">
+                        <div className="text-green-700">
+                          <CheckCircle2 className="h-4 w-4 mx-auto" />
+                          {s.present}
+                        </div>
+                        <div className="text-yellow-700">
+                          <Clock className="h-4 w-4 mx-auto" />
+                          {s.late}
+                        </div>
+                        <div className="text-red-700">
+                          <XCircle className="h-4 w-4 mx-auto" />
+                          {s.absent}
+                        </div>
+                      </div>
+                      <Badge
+                        className={
+                          s.presentRate >= 75
+                            ? 'bg-green-100 text-green-800'
+                            : s.presentRate >= 50
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                        }
+                      >
+                        {s.presentRate}%
+                      </Badge>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </div>
           )}
         </>
@@ -262,7 +344,12 @@ export default function AttendancePage() {
           {/* Teacher: mark today's attendance */}
           {canMark && (
             <Card className="border-dashed">
-              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><UserCheck className="h-4 w-4"/>{t.courseAttendance.markToday} ({formatDate(today)})</CardTitle></CardHeader>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <UserCheck className="h-4 w-4" />
+                  {t.courseAttendance.markToday} ({formatDate(today)})
+                </CardTitle>
+              </CardHeader>
               <CardContent className="p-4 pt-0">
                 {(byDate[today] || []).length === 0 ? (
                   <div className="space-y-3">
@@ -274,7 +361,8 @@ export default function AttendancePage() {
                     ) : (
                       <div className="space-y-2">
                         <p className="text-xs text-muted-foreground">
-                          {enrolledStudents.length} student{enrolledStudents.length !== 1 ? 's' : ''} enrolled. Start today's session to mark attendance.
+                          {enrolledStudents.length} student{enrolledStudents.length !== 1 ? 's' : ''} enrolled. Start
+                          today's session to mark attendance.
                         </p>
                         <Button
                           size="sm"
@@ -294,15 +382,19 @@ export default function AttendancePage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {byDate[today].map(r => (
+                    {byDate[today].map((r) => (
                       <div key={r.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm">{r.student?.fullName}</p>
                         <div className="flex flex-wrap gap-1">
-                          {(['PRESENT', 'LATE', 'ABSENT'] as const).map(s => (
-                            <Button key={s} size="sm" variant={r.status === s ? 'default' : 'outline'}
+                          {(['PRESENT', 'LATE', 'ABSENT'] as const).map((s) => (
+                            <Button
+                              key={s}
+                              size="sm"
+                              variant={r.status === s ? 'default' : 'outline'}
                               className={`h-7 px-2 text-[10px] ${r.status === s ? '' : 'text-muted-foreground'}`}
                               title={statusLabel[s]}
-                              onClick={() => markMutation.mutate({ studentId: r.studentId, date: today, status: s })}>
+                              onClick={() => markMutation.mutate({ studentId: r.studentId, date: today, status: s })}
+                            >
                               {statusShort[s]}
                             </Button>
                           ))}
@@ -335,34 +427,47 @@ export default function AttendancePage() {
             </motion.div>
           ) : (
             <div className="space-y-4">
-              {Object.entries(byDate).sort(([a], [b]) => b.localeCompare(a)).map(([date, rows]) => (
-                <Card key={date}>
-                  <CardContent className="p-4">
-                    <p className="text-sm font-semibold mb-3">{formatDate(date)}</p>
-                    <div className="space-y-2">
-                      {rows.map(r => (
-                        <div key={r.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <p className="text-sm">{r.student?.fullName || r.studentId}</p>
-                          {canMark ? (
-                            <div className="flex flex-wrap gap-1">
-                              {(['PRESENT', 'LATE', 'ABSENT'] as const).map(s => (
-                                <Button key={s} size="sm" variant={r.status === s ? 'default' : 'outline'}
-                                  className={`h-6 px-2 text-[10px] ${r.status === s ? '' : 'text-muted-foreground'}`}
-                                  title={statusLabel[s]}
-                                  onClick={() => markMutation.mutate({ studentId: r.studentId, date, status: s })}>
-                                  {statusShort[s]}
-                                </Button>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_COLORS[r.status] || ''}`}>{statusLabel[r.status]}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              {Object.entries(byDate)
+                .sort(([a], [b]) => b.localeCompare(a))
+                .map(([date, rows]) => (
+                  <Card key={date}>
+                    <CardContent className="p-4">
+                      <p className="text-sm font-semibold mb-3">{formatDate(date)}</p>
+                      <div className="space-y-2">
+                        {rows.map((r) => (
+                          <div
+                            key={r.id}
+                            className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <p className="text-sm">{r.student?.fullName || r.studentId}</p>
+                            {canMark ? (
+                              <div className="flex flex-wrap gap-1">
+                                {(['PRESENT', 'LATE', 'ABSENT'] as const).map((s) => (
+                                  <Button
+                                    key={s}
+                                    size="sm"
+                                    variant={r.status === s ? 'default' : 'outline'}
+                                    className={`h-6 px-2 text-[10px] ${r.status === s ? '' : 'text-muted-foreground'}`}
+                                    title={statusLabel[s]}
+                                    onClick={() => markMutation.mutate({ studentId: r.studentId, date, status: s })}
+                                  >
+                                    {statusShort[s]}
+                                  </Button>
+                                ))}
+                              </div>
+                            ) : (
+                              <span
+                                className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_COLORS[r.status] || ''}`}
+                              >
+                                {statusLabel[r.status]}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
             </div>
           )}
         </>

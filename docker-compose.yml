@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:15-alpine
@@ -9,11 +7,11 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: unilms
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d unilms"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d unilms']
       interval: 3s
       timeout: 3s
       retries: 15
@@ -23,35 +21,49 @@ services:
       context: ./apps/backend
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      - '4000:4000'
     env_file:
       - ./apps/backend/.env
+    # Note on env vars:
+    #   `env_file` above loads the canonical apps/backend/.env (JWT secrets,
+    #   LLM key, etc.). The `environment:` block below ONLY overrides the
+    #   DATABASE_URL (because compose-internal hostname is "postgres", not
+    #   "localhost") and passthroughs for optional integrations from the root
+    #   .env. JWT secrets MUST NOT be listed here — explicit `environment:`
+    #   entries take precedence and would overwrite strong .env values with
+    #   placeholders.
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/unilms?schema=public
-      JWT_SECRET: change-me-super-secret-jwt-key-at-least-32-chars
-      JWT_REFRESH_SECRET: change-me-super-secret-refresh-key-at-least-32
-      JWT_EXPIRATION: 15m
-      JWT_REFRESH_EXPIRATION: 7d
       LLM_API_KEY: ${LLM_API_KEY:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:4000/api/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:
       context: ./apps/frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - '3000:3000'
     environment:
       NEXT_PUBLIC_API_URL: http://backend:4000/api
+    # Wait for backend healthcheck (not just process start) so Next.js doesn't
+    # hit ECONNREFUSED on its first proxy attempt to /api/...
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   pgdata:

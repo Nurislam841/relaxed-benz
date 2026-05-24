@@ -1,12 +1,18 @@
-import {
-  Controller, Post, Body, UseGuards, Res, HttpCode,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Res, HttpCode, ForbiddenException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AiService } from './ai.service';
-import { AssignmentFeedbackDto, GenerateQuizDto, CourseSummaryDto, StudentAnalysisDto, ChatMessageDto, StudyCoachDto, ClassInsightsDto } from './ai.dto';
+import {
+  AssignmentFeedbackDto,
+  GenerateQuizDto,
+  CourseSummaryDto,
+  StudentAnalysisDto,
+  ChatMessageDto,
+  StudyCoachDto,
+  ClassInsightsDto,
+  CodeReviewDto,
+} from './ai.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
 
@@ -17,11 +23,27 @@ import { Role } from '@prisma/client';
 export class AiController {
   constructor(private svc: AiService) {}
 
+  @Get('status')
+  @ApiOperation({
+    summary: 'AI module status — tells the UI whether AI is fully configured or running in demo mode',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns { configured, demo, reason? }. reason is "no_key" (env unset) or "invalid_key" (Anthropic returned 401).',
+  })
+  status() {
+    return this.svc.getStatus();
+  }
+
   @Post('assignment-feedback')
   @HttpCode(200)
   @ApiOperation({ summary: 'AI feedback for a student submission (student: own submission only; teacher/admin: any)' })
-  @ApiResponse({ status: 200, description: 'Feedback with assessment, strengths, improvements, suggestions. _demo:true when no LLM key.' })
-  @ApiResponse({ status: 403, description: 'Student accessing another student\'s submission' })
+  @ApiResponse({
+    status: 200,
+    description: 'Feedback with assessment, strengths, improvements, suggestions. _demo:true when no LLM key.',
+  })
+  @ApiResponse({ status: 403, description: "Student accessing another student's submission" })
   assignmentFeedback(@Body() dto: AssignmentFeedbackDto, @CurrentUser() user: any) {
     return this.svc.getAssignmentFeedback(dto, user.id, user.role);
   }
@@ -29,7 +51,10 @@ export class AiController {
   @Post('generate-quiz')
   @HttpCode(200)
   @ApiOperation({ summary: 'Generate a quiz for a course topic (teacher/admin only)' })
-  @ApiResponse({ status: 200, description: 'Quiz with questions, options, correctIndex, explanation. _demo:true when no LLM key.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Quiz with questions, options, correctIndex, explanation. _demo:true when no LLM key.',
+  })
   @ApiResponse({ status: 403, description: 'Students cannot generate quizzes' })
   generateQuiz(@Body() dto: GenerateQuizDto, @CurrentUser() user: any) {
     if (user.role === Role.STUDENT) {
@@ -49,8 +74,11 @@ export class AiController {
   @Post('student-analysis')
   @HttpCode(200)
   @ApiOperation({ summary: '[Deprecated] AI analysis of student performance. Use /ai/study-coach instead.' })
-  @ApiResponse({ status: 200, description: 'Analysis with strengths, areasToImprove, recommendations, riskLevel. _demo:true when no LLM key.' })
-  @ApiResponse({ status: 403, description: 'Student accessing another student\'s analysis' })
+  @ApiResponse({
+    status: 200,
+    description: 'Analysis with strengths, areasToImprove, recommendations, riskLevel. _demo:true when no LLM key.',
+  })
+  @ApiResponse({ status: 403, description: "Student accessing another student's analysis" })
   studentAnalysis(@Body() dto: StudentAnalysisDto, @CurrentUser() user: any) {
     return this.svc.getStudentAnalysis(dto, user.id, user.role);
   }
@@ -58,7 +86,10 @@ export class AiController {
   @Post('study-coach')
   @HttpCode(200)
   @ApiOperation({ summary: 'Personal AI Study Coach: predicted grade trajectory + study plan + mistake patterns' })
-  @ApiResponse({ status: 200, description: 'trajectory{}, weaknesses[], studyPlan[], mistakePatterns[]. _demo:true when no LLM key.' })
+  @ApiResponse({
+    status: 200,
+    description: 'trajectory{}, weaknesses[], studyPlan[], mistakePatterns[]. _demo:true when no LLM key.',
+  })
   studyCoach(@Body() dto: StudyCoachDto, @CurrentUser() user: any) {
     return this.svc.getStudyCoach(dto, user.id, user.role);
   }
@@ -66,10 +97,26 @@ export class AiController {
   @Post('class-insights')
   @HttpCode(200)
   @ApiOperation({ summary: 'Teacher-only: at-risk students + class weakness map + high performers (course-wide)' })
-  @ApiResponse({ status: 200, description: 'atRiskStudents[], classWeaknesses[], highPerformers[]. _demo:true when no LLM key.' })
+  @ApiResponse({
+    status: 200,
+    description: 'atRiskStudents[], classWeaknesses[], highPerformers[]. _demo:true when no LLM key.',
+  })
   @ApiResponse({ status: 403, description: 'Students cannot view class insights' })
   classInsights(@Body() dto: ClassInsightsDto, @CurrentUser() user: any) {
     return this.svc.getClassInsights(dto, user.id, user.role);
+  }
+
+  @Post('code-review')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'AI code review of a submission — bugs, style, performance, security with line numbers' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'summary, language, issues[{line, severity, category, message, suggestion}], positiveAspects[]. _demo:true when no LLM key.',
+  })
+  @ApiResponse({ status: 403, description: "Student requesting review for another student's submission" })
+  codeReview(@Body() dto: CodeReviewDto, @CurrentUser() user: any) {
+    return this.svc.reviewCode(dto, user.id, user.role);
   }
 
   @Post('chat')

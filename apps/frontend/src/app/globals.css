@@ -367,3 +367,109 @@
 
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { scrollbar-width: none; }
+
+/* ==========================================================================
+   Print stylesheet
+   ==========================================================================
+   The PDF export endpoints (gradebook / attendance / transcript) are the
+   canonical print format. But users still hit Ctrl+P on regular pages —
+   we make that produce something legible instead of a chrome-soup screenshot.
+
+   Rules:
+     • Hide chrome (sidebar, topbar, floating AI chat, action buttons)
+     • Force light backgrounds + black text regardless of dark mode
+     • Expand the main content area to full page width
+     • Drop hover/transition effects (printers don't animate)
+     • Show link URLs after anchor text for printed citation
+*/
+@media print {
+  /* Reset to clean light-on-white */
+  :root,
+  html.dark {
+    --bg: #ffffff;
+    --bg-subtle: #ffffff;
+    --bg-muted: #ffffff;
+    --surface: #ffffff;
+    --fg: #000000;
+    --fg-muted: #333333;
+    --fg-subtle: #666666;
+    --border-color: #cccccc;
+    --border-strong: #999999;
+    --accent-500: #1f2937;
+    --accent-600: #111827;
+    --accent-700: #000000;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Hide screen-only chrome */
+  aside,
+  nav,
+  header,
+  [role='navigation'],
+  .no-print,
+  /* AI chat floating button + panel */
+  .fixed.bottom-4,
+  .fixed.bottom-6,
+  /* Toast container */
+  [data-radix-toast-viewport],
+  /* Sidebar specifically (rendered via <aside> already, but be explicit) */
+  .lg\:fixed.lg\:inset-y-0 {
+    display: none !important;
+  }
+
+  /* Buttons (interactive) — hide when their `data-print="hide"` is not set,
+     but keep them visible if author explicitly opted them in. */
+  button:not([data-print='keep']),
+  a[role='button']:not([data-print='keep']) {
+    display: none !important;
+  }
+
+  /* Expand main content past the sidebar offset */
+  main, .lg\:ml-\[248px\] {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Cards: flatten shadows + borders for print */
+  .rounded-ds-lg,
+  .rounded-xl,
+  .rounded-lg {
+    box-shadow: none !important;
+    border: 1px solid #cccccc !important;
+    page-break-inside: avoid;
+  }
+
+  /* Tables — clearer rules + repeat headers across pages */
+  table {
+    border-collapse: collapse !important;
+  }
+  thead { display: table-header-group; }
+  tbody tr { page-break-inside: avoid; }
+  th, td {
+    border: 1px solid #999999 !important;
+  }
+
+  /* Show URLs after links so printed pages are useful for citation */
+  a[href^='http']:after {
+    content: ' (' attr(href) ')';
+    font-size: 0.85em;
+    color: #555;
+    word-break: break-all;
+  }
+
+  /* Suppress animations + transitions */
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* Encourage page breaks around major sections */
+  h1, h2 {
+    page-break-after: avoid;
+  }
+  h3 {
+    page-break-after: avoid;
+  }
+}

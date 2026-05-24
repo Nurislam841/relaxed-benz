@@ -11,14 +11,46 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
-  ArrowLeft, Clock, AlertTriangle, CheckCircle2, Award,
-  FileText, File as FileIcon, Image as ImageIcon, Archive,
-  ExternalLink, Code2, AlignLeft, Paperclip, Download, Eye, EyeOff,
-  Send, Globe, MessageSquare, ChevronDown, Users, BarChart2,
-  Loader2, CalendarClock,
+  ArrowLeft,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  Award,
+  FileText,
+  File as FileIcon,
+  Image as ImageIcon,
+  Archive,
+  ExternalLink,
+  Code2,
+  AlignLeft,
+  Paperclip,
+  Download,
+  Eye,
+  EyeOff,
+  Send,
+  Globe,
+  MessageSquare,
+  ChevronDown,
+  Users,
+  BarChart2,
+  Loader2,
+  CalendarClock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMe } from '@/hooks/use-auth';
+import dynamic from 'next/dynamic';
+
+// CodeReviewPanel renders a full-screen dialog with annotated source code,
+// only opened when the teacher clicks "AI Code Review". Markdown view is for
+// non-code text answers — both can be deferred until they're actually needed.
+const CodeReviewPanel = dynamic(
+  () => import('@/components/ai/code-review').then((m) => ({ default: m.CodeReviewPanel })),
+  { ssr: false },
+);
+const MarkdownView = dynamic(
+  () => import('@/components/markdown/markdown-view').then((m) => ({ default: m.MarkdownView })),
+  { ssr: false },
+);
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -27,7 +59,11 @@ type SubmissionDetail = Submission & {
   grade: (Grade & { gradedBy: { id: string; fullName: string } | null }) | null;
   attachments: SubmissionAttachment[];
   assignment: {
-    id: string; title: string; maxScore: number; dueAt: string; courseId: string;
+    id: string;
+    title: string;
+    maxScore: number;
+    dueAt: string;
+    courseId: string;
     course: { id: string; title: string; code: string };
   };
 };
@@ -67,18 +103,24 @@ function looksLikeCode(text: string): boolean {
     /\/\//,
     /=>/,
   ];
-  return patterns.filter(p => p.test(text)).length >= 2;
+  return patterns.filter((p) => p.test(text)).length >= 2;
 }
 
 function getDomain(url: string): string {
-  try { return new URL(url).hostname.replace('www.', ''); }
-  catch { return url; }
+  try {
+    return new URL(url).hostname.replace('www.', '');
+  } catch {
+    return url;
+  }
 }
 
 function fmtDt(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -105,7 +147,7 @@ function AttachmentItem({ att }: { att: SubmissionAttachment }) {
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {canPreview && (
-            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={() => setOpen(v => !v)}>
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={() => setOpen((v) => !v)}>
               {open ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
               {open ? 'Hide' : 'Preview'}
             </Button>
@@ -164,25 +206,29 @@ function GradePanel({ sub }: { sub: SubmissionDetail }) {
   const isValid = !isNaN(numScore) && numScore >= 0 && numScore <= maxScore;
   const pct = isValid ? Math.round((numScore / maxScore) * 100) : null;
   const pctColor =
-    pct == null ? '' :
-    pct >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
-    pct >= 60 ? 'text-amber-600 dark:text-amber-400' :
-    'text-rose-600 dark:text-rose-400';
+    pct == null
+      ? ''
+      : pct >= 80
+        ? 'text-emerald-600 dark:text-emerald-400'
+        : pct >= 60
+          ? 'text-amber-600 dark:text-amber-400'
+          : 'text-rose-600 dark:text-rose-400';
   const borderColor =
-    !isValid || pct == null ? '' :
-    pct >= 80 ? 'border-emerald-300 dark:border-emerald-500/40 focus:ring-emerald-500/20' :
-    pct >= 60 ? 'border-amber-300 dark:border-amber-500/40 focus:ring-amber-500/20' :
-    'border-rose-300 dark:border-rose-500/40 focus:ring-rose-500/20';
+    !isValid || pct == null
+      ? ''
+      : pct >= 80
+        ? 'border-emerald-300 dark:border-emerald-500/40 focus:ring-emerald-500/20'
+        : pct >= 60
+          ? 'border-amber-300 dark:border-amber-500/40 focus:ring-amber-500/20'
+          : 'border-rose-300 dark:border-rose-500/40 focus:ring-rose-500/20';
 
   const gradeMut = useMutation({
-    mutationFn: (d: { score: number; feedback?: string }) =>
-      api.post(`/submissions/${sub.id}/grade`, d),
+    mutationFn: (d: { score: number; feedback?: string }) => api.post(`/submissions/${sub.id}/grade`, d),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sub-review', sub.id] });
       toast({ title: sub.grade ? 'Grade updated' : 'Grade published' });
     },
-    onError: (e: any) =>
-      toast({ title: 'Failed to save grade', description: e.message, variant: 'destructive' }),
+    onError: (e: any) => toast({ title: 'Failed to save grade', description: e.message, variant: 'destructive' }),
   });
 
   const circR = 26;
@@ -195,24 +241,34 @@ function GradePanel({ sub }: { sub: SubmissionDetail }) {
       <div className="flex items-center gap-4">
         <div className="relative shrink-0">
           <svg width="68" height="68" className="-rotate-90">
-            <circle cx="34" cy="34" r={circR} strokeWidth="5" fill="none"
-              className="stroke-muted" />
-            <circle cx="34" cy="34" r={circR} strokeWidth="5" fill="none"
+            <circle cx="34" cy="34" r={circR} strokeWidth="5" fill="none" className="stroke-muted" />
+            <circle
+              cx="34"
+              cy="34"
+              r={circR}
+              strokeWidth="5"
+              fill="none"
               strokeLinecap="round"
               strokeDasharray={circC}
               strokeDashoffset={circC - (circC * Math.min(circPct, 100)) / 100}
               className={cn(
                 'transition-all duration-500',
-                pct == null ? 'stroke-border' :
-                pct >= 80 ? 'stroke-emerald-500' :
-                pct >= 60 ? 'stroke-amber-500' : 'stroke-rose-500',
+                pct == null
+                  ? 'stroke-border'
+                  : pct >= 80
+                    ? 'stroke-emerald-500'
+                    : pct >= 60
+                      ? 'stroke-amber-500'
+                      : 'stroke-rose-500',
               )}
             />
           </svg>
-          <span className={cn(
-            'absolute inset-0 flex items-center justify-center text-xs font-bold',
-            pctColor || 'text-muted-foreground',
-          )}>
+          <span
+            className={cn(
+              'absolute inset-0 flex items-center justify-center text-xs font-bold',
+              pctColor || 'text-muted-foreground',
+            )}
+          >
             {pct != null ? `${pct}%` : '—'}
           </span>
         </div>
@@ -225,11 +281,8 @@ function GradePanel({ sub }: { sub: SubmissionDetail }) {
               min={0}
               max={maxScore}
               value={score}
-              onChange={e => setScore(e.target.value)}
-              className={cn(
-                'flex-1 text-xl font-bold h-11 text-center tabular-nums',
-                borderColor,
-              )}
+              onChange={(e) => setScore(e.target.value)}
+              className={cn('flex-1 text-xl font-bold h-11 text-center tabular-nums', borderColor)}
               placeholder="0"
             />
             <div className="text-center shrink-0">
@@ -238,9 +291,7 @@ function GradePanel({ sub }: { sub: SubmissionDetail }) {
             </div>
           </div>
           {score !== '' && !isValid && (
-            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">
-              Must be 0–{maxScore}
-            </p>
+            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">Must be 0–{maxScore}</p>
           )}
         </div>
       </div>
@@ -252,7 +303,7 @@ function GradePanel({ sub }: { sub: SubmissionDetail }) {
         </Label>
         <Textarea
           value={feedback}
-          onChange={e => setFeedback(e.target.value)}
+          onChange={(e) => setFeedback(e.target.value)}
           rows={5}
           placeholder="Provide constructive feedback to help the student improve…"
           className="resize-none text-sm"
@@ -267,29 +318,29 @@ function GradePanel({ sub }: { sub: SubmissionDetail }) {
         onClick={() => gradeMut.mutate({ score: numScore, feedback: feedback || undefined })}
       >
         {gradeMut.isPending ? (
-          <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</>
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" /> Saving…
+          </>
         ) : sub.grade ? (
-          <><Award className="h-4 w-4" /> Update Grade</>
+          <>
+            <Award className="h-4 w-4" /> Update Grade
+          </>
         ) : (
-          <><Send className="h-4 w-4" /> Publish Grade</>
+          <>
+            <Send className="h-4 w-4" /> Publish Grade
+          </>
         )}
       </Button>
 
       {/* Existing grade display */}
       {sub.grade && (
         <div className="rounded-lg bg-muted/40 dark:bg-white/[0.03] border border-border/40 dark:border-white/[0.05] p-3 space-y-1.5">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-            Current grade
-          </p>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Current grade</p>
           <div className="flex items-center justify-between">
             <span className={cn('text-2xl font-bold', pctColor)}>{sub.grade.score}</span>
             <div className="text-right">
-              <p className="text-xs text-muted-foreground">
-                {sub.grade.gradedBy?.fullName ?? 'Teacher'}
-              </p>
-              <p className="text-[11px] text-muted-foreground/60">
-                {fmtDt(sub.grade.gradedAt)}
-              </p>
+              <p className="text-xs text-muted-foreground">{sub.grade.gradedBy?.fullName ?? 'Teacher'}</p>
+              <p className="text-[11px] text-muted-foreground/60">{fmtDt(sub.grade.gradedAt)}</p>
             </div>
           </div>
           {sub.grade.feedback && (
@@ -306,8 +357,14 @@ function GradePanel({ sub }: { sub: SubmissionDetail }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SubmissionReviewPage() {
-  const { id: courseId, assignmentId, submissionId } = useParams<{
-    id: string; assignmentId: string; submissionId: string;
+  const {
+    id: courseId,
+    assignmentId,
+    submissionId,
+  } = useParams<{
+    id: string;
+    assignmentId: string;
+    submissionId: string;
   }>();
   const router = useRouter();
   const { data: me } = useMe();
@@ -319,9 +376,29 @@ export default function SubmissionReviewPage() {
     queryFn: () => api.get(`/submissions/${submissionId}`),
   });
 
-  const hasText = !!(sub?.contentText);
+  const isStaff = me?.role === 'TEACHER' || me?.role === 'ADMIN';
+
+  const { data: plagiarism } = useQuery<
+    Array<{
+      id: string;
+      similarity: number;
+      matchedNgrams: number;
+      createdAt: string;
+      otherSubmission: { id: string; studentId: string; student: { fullName: string } };
+    }>
+  >({
+    queryKey: ['plagiarism', submissionId],
+    queryFn: () => api.get(`/submissions/${submissionId}/plagiarism`),
+    enabled: isStaff && !!submissionId,
+  });
+
+  const topMatch = plagiarism && plagiarism.length > 0 ? plagiarism[0] : null;
+  const topMatchPct = topMatch ? Math.round(topMatch.similarity * 100) : 0;
+  const matchTone = topMatchPct >= 70 ? 'high' : topMatchPct >= 40 ? 'medium' : 'low';
+
+  const hasText = !!sub?.contentText;
   const hasFiles = (sub?.attachments?.length ?? 0) > 0;
-  const hasLink = !!(sub?.contentUrl);
+  const hasLink = !!sub?.contentUrl;
   const isCode = hasText && looksLikeCode(sub!.contentText!);
   const isLate = !!(sub?.submittedAt && new Date(sub.submittedAt) > new Date(sub.assignment.dueAt));
 
@@ -334,7 +411,7 @@ export default function SubmissionReviewPage() {
     return t;
   }, [sub, hasText, hasFiles, hasLink, isCode]);
 
-  const activeTab = tabs.find(t => t.key === contentTab) ? contentTab : (tabs[0]?.key ?? 'text');
+  const activeTab = tabs.find((t) => t.key === contentTab) ? contentTab : (tabs[0]?.key ?? 'text');
 
   // ── Loading ──────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -365,7 +442,6 @@ export default function SubmissionReviewPage() {
 
   return (
     <div className="space-y-5 mt-1">
-
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 text-sm flex-wrap">
         <button
@@ -389,9 +465,7 @@ export default function SubmissionReviewPage() {
             <p className="text-xs text-muted-foreground font-medium mb-1">
               {sub.assignment.course.code} · {sub.assignment.course.title}
             </p>
-            <h1 className="font-serif text-xl font-semibold leading-tight">
-              {sub.assignment.title}
-            </h1>
+            <h1 className="font-serif text-xl font-semibold leading-tight">{sub.assignment.title}</h1>
             <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1">
                 <Award className="h-3.5 w-3.5" />
@@ -399,14 +473,33 @@ export default function SubmissionReviewPage() {
               </span>
               <span className="flex items-center gap-1">
                 <CalendarClock className="h-3.5 w-3.5" />
-                Due {new Date(sub.assignment.dueAt).toLocaleDateString('en-US', {
-                  month: 'short', day: 'numeric', year: 'numeric',
+                Due{' '}
+                {new Date(sub.assignment.dueAt).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
                 })}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap shrink-0">
+            {topMatch && (
+              <span
+                title={`${topMatchPct}% similar to ${topMatch.otherSubmission.student.fullName}'s submission (${topMatch.matchedNgrams} matching n-grams). Click "View comparison" to investigate.`}
+                className={cn(
+                  'inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border',
+                  matchTone === 'high'
+                    ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/[0.12] dark:text-rose-300 dark:border-rose-500/30'
+                    : matchTone === 'medium'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/[0.12] dark:text-amber-300 dark:border-amber-500/30'
+                      : 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-500/[0.12] dark:text-yellow-200 dark:border-yellow-500/30',
+                )}
+              >
+                <AlertTriangle className="h-3 w-3" />
+                {topMatchPct}% similar to {topMatch.otherSubmission.student.fullName.split(' ')[0]}
+              </span>
+            )}
             {isLate && (
               <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/[0.12] dark:text-rose-300 dark:border-rose-500/30">
                 <AlertTriangle className="h-3 w-3" /> Late
@@ -455,7 +548,6 @@ export default function SubmissionReviewPage() {
 
       {/* Main 2-col grid */}
       <div className="grid lg:grid-cols-[2fr_1fr] gap-5 items-start">
-
         {/* ── LEFT: Submission content ── */}
         <div className="space-y-4 min-w-0">
           {!hasAnyContent ? (
@@ -473,7 +565,7 @@ export default function SubmissionReviewPage() {
               {/* Tab bar */}
               {tabs.length > 0 && (
                 <div className="flex border-b border-border/40 dark:border-white/[0.05] bg-muted/30 dark:bg-white/[0.02]">
-                  {tabs.map(tab => {
+                  {tabs.map((tab) => {
                     const TabIcon = tab.icon;
                     return (
                       <button
@@ -501,15 +593,19 @@ export default function SubmissionReviewPage() {
 
               <div className="p-5">
                 {/* TEXT / CODE tab */}
-                {activeTab === 'text' && hasText && (
-                  isCode ? (
+                {activeTab === 'text' &&
+                  hasText &&
+                  (isCode ? (
                     <div>
                       <div className="flex items-center gap-2 mb-3">
                         <Code2 className="h-4 w-4 text-muted-foreground" />
                         <span className="text-xs font-medium text-muted-foreground">Code Submission</span>
-                        <span className="ml-auto font-mono text-[10px] text-muted-foreground/60 bg-muted/40 dark:bg-white/[0.04] px-2 py-0.5 rounded">
+                        <span className="font-mono text-[10px] text-muted-foreground/60 bg-muted/40 dark:bg-white/[0.04] px-2 py-0.5 rounded">
                           {sub.contentText!.length} chars
                         </span>
+                        <div className="ml-auto">
+                          <CodeReviewPanel submissionId={sub.id} code={sub.contentText!} />
+                        </div>
                       </div>
                       <div className="relative rounded-lg bg-zinc-950 dark:bg-black/50 border border-zinc-800/60 dark:border-white/[0.06] overflow-hidden">
                         <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/25 to-transparent" />
@@ -538,13 +634,10 @@ export default function SubmissionReviewPage() {
                         </span>
                       </div>
                       <div className="rounded-lg bg-muted/20 dark:bg-white/[0.02] border border-border/30 dark:border-white/[0.04] p-4">
-                        <div className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                          {sub.contentText}
-                        </div>
+                        <MarkdownView source={sub.contentText!} />
                       </div>
                     </div>
-                  )
-                )}
+                  ))}
 
                 {/* FILES tab */}
                 {activeTab === 'files' && hasFiles && (
@@ -555,7 +648,7 @@ export default function SubmissionReviewPage() {
                         {sub.attachments.length} file{sub.attachments.length !== 1 ? 's' : ''} attached
                       </span>
                     </div>
-                    {sub.attachments.map(a => (
+                    {sub.attachments.map((a) => (
                       <AttachmentItem key={a.id} att={a} />
                     ))}
                   </div>
@@ -575,9 +668,7 @@ export default function SubmissionReviewPage() {
                           <Globe className="h-5 w-5 text-primary/70" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[11px] text-muted-foreground mb-0.5">
-                            {getDomain(sub.contentUrl!)}
-                          </p>
+                          <p className="text-[11px] text-muted-foreground mb-0.5">{getDomain(sub.contentUrl!)}</p>
                           <a
                             href={sub.contentUrl!}
                             target="_blank"
@@ -642,9 +733,7 @@ export default function SubmissionReviewPage() {
 
           {/* Quick stats */}
           <div className="rounded-xl border border-border/60 dark:border-white/[0.07] bg-card dark:bg-card/80 p-4 space-y-2.5">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Submission Info
-            </p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Submission Info</p>
             <div className="space-y-2 text-xs">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status</span>
@@ -669,9 +758,7 @@ export default function SubmissionReviewPage() {
               )}
               {hasText && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">
-                    {isCode ? 'Code length' : 'Word count'}
-                  </span>
+                  <span className="text-muted-foreground">{isCode ? 'Code length' : 'Word count'}</span>
                   <span className="font-medium">
                     {isCode
                       ? `${sub.contentText!.length} chars`

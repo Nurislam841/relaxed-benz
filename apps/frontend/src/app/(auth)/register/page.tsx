@@ -9,15 +9,24 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { GraduationCap, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Eyebrow } from '@/components/ds/eyebrow';
+import { registerSchema, formatZodErrors } from '@/lib/validation';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const reg = useRegister();
 
   const go = (ev: React.FormEvent) => {
     ev.preventDefault();
+    const parsed = registerSchema.safeParse({ email, password, fullName, role: 'STUDENT' });
+    const fieldErrors = formatZodErrors(parsed);
+    if (fieldErrors) {
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
     reg.mutate(
       { email, password, fullName },
       { onError: (err) => toast({ title: 'Failed', description: err.message, variant: 'destructive' }) },
@@ -25,9 +34,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4 bg-[var(--bg)] relative overflow-hidden"
-    >
+    <div className="min-h-screen flex items-center justify-center p-4 bg-[var(--bg)] relative overflow-hidden">
       {/* Background glow */}
       <div
         className="absolute inset-0 pointer-events-none"
@@ -48,30 +55,48 @@ export default function RegisterPage() {
             <GraduationCap className="h-7 w-7 text-white" />
           </div>
           <Eyebrow>Get started</Eyebrow>
-          <CardTitle className="font-serif text-[26px] tracking-[-0.015em] mt-2">
-            Create account
-          </CardTitle>
+          <CardTitle className="font-serif text-[26px] tracking-[-0.015em] mt-2">Create account</CardTitle>
           <CardDescription>Register for UniLMS</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={go} className="space-y-3.5">
+          <form onSubmit={go} noValidate className="space-y-3.5">
             <div className="space-y-1.5">
               <Label>Full name</Label>
-              <Input value={fullName} onChange={(x) => setFullName(x.target.value)} required />
+              <Input
+                value={fullName}
+                onChange={(x) => {
+                  setFullName(x.target.value);
+                  if (errors.fullName) setErrors({ ...errors, fullName: '' });
+                }}
+                aria-invalid={!!errors.fullName}
+              />
+              {errors.fullName && <p className="text-[12px] text-[var(--danger)]">{errors.fullName}</p>}
             </div>
             <div className="space-y-1.5">
               <Label>Email</Label>
-              <Input type="email" value={email} onChange={(x) => setEmail(x.target.value)} required />
+              <Input
+                type="email"
+                value={email}
+                onChange={(x) => {
+                  setEmail(x.target.value);
+                  if (errors.email) setErrors({ ...errors, email: '' });
+                }}
+                aria-invalid={!!errors.email}
+              />
+              {errors.email && <p className="text-[12px] text-[var(--danger)]">{errors.email}</p>}
             </div>
             <div className="space-y-1.5">
               <Label>Password</Label>
               <Input
                 type="password"
                 value={password}
-                onChange={(x) => setPassword(x.target.value)}
-                required
-                minLength={6}
+                onChange={(x) => {
+                  setPassword(x.target.value);
+                  if (errors.password) setErrors({ ...errors, password: '' });
+                }}
+                aria-invalid={!!errors.password}
               />
+              {errors.password && <p className="text-[12px] text-[var(--danger)]">{errors.password}</p>}
             </div>
             <Button type="submit" variant="primary" size="lg" className="w-full mt-1" disabled={reg.isPending}>
               {reg.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}

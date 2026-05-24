@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, Skeleton } from '@/components/ui/form-elements';
 import { Badge } from '@/components/ui/badge';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin, Download } from 'lucide-react';
 import { formatTime } from '@/lib/utils';
 import { useLanguage, useT } from '@/lib/i18n';
 
@@ -58,18 +58,20 @@ export default function SchedulePage() {
     queryFn: () => api.get(`/me/schedule?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}`),
   });
 
-  const days = useMemo(() => (
-    Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(weekStart);
-      date.setDate(weekStart.getDate() + index);
-      return {
-        key: date.toISOString().slice(0, 10),
-        date,
-        short: new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date),
-        label: new Intl.DateTimeFormat(locale, { weekday: 'long' }).format(date),
-      };
-    })
-  ), [weekStart, locale]);
+  const days = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(weekStart);
+        date.setDate(weekStart.getDate() + index);
+        return {
+          key: date.toISOString().slice(0, 10),
+          date,
+          short: new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date),
+          label: new Intl.DateTimeFormat(locale, { weekday: 'long' }).format(date),
+        };
+      }),
+    [weekStart, locale],
+  );
 
   const weekLabel = useMemo(() => {
     const sameMonth = weekStart.getMonth() === weekEnd.getMonth();
@@ -79,7 +81,7 @@ export default function SchedulePage() {
     return `${new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(weekStart)} - ${new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(weekEnd)}`;
   }, [locale, weekStart, weekEnd]);
 
-  const courseIds = useMemo(() => Array.from(new Set((items || []).map(s => s.courseId))), [items]);
+  const courseIds = useMemo(() => Array.from(new Set((items || []).map((s) => s.courseId))), [items]);
   const courseColorMap = useMemo(
     () => Object.fromEntries(courseIds.map((id, index) => [id, COURSE_COLORS[index % COURSE_COLORS.length]])),
     [courseIds],
@@ -87,18 +89,22 @@ export default function SchedulePage() {
 
   const coursesInView = useMemo(() => {
     const seen = new Set<string>();
-    return (items || []).filter(item => {
+    return (items || []).filter((item) => {
       if (seen.has(item.courseId)) return false;
       seen.add(item.courseId);
       return true;
     });
   }, [items]);
 
-  const filtered = useMemo(() => (items || []).filter(item => {
-    if (filterCourse && item.courseId !== filterCourse) return false;
-    if (filterDay) return item.startsAt.slice(0, 10) === filterDay;
-    return true;
-  }), [items, filterCourse, filterDay]);
+  const filtered = useMemo(
+    () =>
+      (items || []).filter((item) => {
+        if (filterCourse && item.courseId !== filterCourse) return false;
+        if (filterDay) return item.startsAt.slice(0, 10) === filterDay;
+        return true;
+      }),
+    [items, filterCourse, filterDay],
+  );
 
   const typeLabel = (type: string) => {
     if (type === 'LECTURE') return t.schedule.lecture;
@@ -114,38 +120,84 @@ export default function SchedulePage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-1">
-          <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">Weekly schedule</span>
-          <h1 className="font-serif text-[36px] tracking-[-0.015em] leading-[1.05] text-[var(--fg)]">{t.schedule.title}</h1>
-          <p className="text-[13px] text-[var(--fg-muted)] font-mono">{t.schedule.thisWeek}: {weekLabel}</p>
+          <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-[var(--fg-subtle)]">
+            Weekly schedule
+          </span>
+          <h1 className="font-serif text-[36px] tracking-[-0.015em] leading-[1.05] text-[var(--fg)]">
+            {t.schedule.title}
+          </h1>
+          <p className="text-[13px] text-[var(--fg-muted)] font-mono">
+            {t.schedule.thisWeek}: {weekLabel}
+          </p>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <Select value={filterDay} onChange={e => setFilterDay(e.target.value)} className="h-9 min-w-[150px] text-sm">
+          <Select
+            value={filterDay}
+            onChange={(e) => setFilterDay(e.target.value)}
+            className="h-9 min-w-[150px] text-sm"
+          >
             <option value="">{t.schedule.allDays}</option>
-            {days.map(day => <option key={day.key} value={day.key}>{day.label}</option>)}
+            {days.map((day) => (
+              <option key={day.key} value={day.key}>
+                {day.label}
+              </option>
+            ))}
           </Select>
-          <Select value={filterCourse} onChange={e => setFilterCourse(e.target.value)} className="h-9 min-w-[170px] text-sm">
+          <Select
+            value={filterCourse}
+            onChange={(e) => setFilterCourse(e.target.value)}
+            className="h-9 min-w-[170px] text-sm"
+          >
             <option value="">{t.schedule.allCourses}</option>
-            {coursesInView.map(item => <option key={item.courseId} value={item.courseId}>{item.course?.code} - {item.course?.title}</option>)}
+            {coursesInView.map((item) => (
+              <option key={item.courseId} value={item.courseId}>
+                {item.course?.code} - {item.course?.title}
+              </option>
+            ))}
           </Select>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setWeekStart(prev => { const next = new Date(prev); next.setDate(prev.getDate() - 7); return next; })}
+              onClick={() =>
+                setWeekStart((prev) => {
+                  const next = new Date(prev);
+                  next.setDate(prev.getDate() - 7);
+                  return next;
+                })
+              }
               title={t.schedule.previousWeek}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setWeekStart(getMon(new Date()))}>{t.schedule.today}</Button>
+            <Button variant="outline" size="sm" onClick={() => setWeekStart(getMon(new Date()))}>
+              {t.schedule.today}
+            </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setWeekStart(prev => { const next = new Date(prev); next.setDate(prev.getDate() + 7); return next; })}
+              onClick={() =>
+                setWeekStart((prev) => {
+                  const next = new Date(prev);
+                  next.setDate(prev.getDate() + 7);
+                  return next;
+                })
+              }
               title={t.schedule.nextWeek}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
+            <a
+              href="/api/me/schedule.ics"
+              download="unilms-schedule.ics"
+              title="Export to Google Calendar / Apple Calendar / Outlook (.ics)"
+            >
+              <Button variant="outline" size="sm" type="button">
+                <Download className="h-4 w-4" />
+                <span className="ml-1.5 hidden sm:inline">Export .ics</span>
+              </Button>
+            </a>
           </div>
         </div>
       </div>
@@ -153,7 +205,11 @@ export default function SchedulePage() {
       <Card>
         <CardContent className="p-4">
           {isLoading ? (
-            <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full" />)}</div>
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))}
+            </div>
           ) : !filtered.length ? (
             <div className="py-12 text-center text-muted-foreground">
               <CalendarDays className="mx-auto mb-3 h-10 w-10 opacity-30" />
@@ -161,9 +217,9 @@ export default function SchedulePage() {
             </div>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {days.map(day => {
+              {days.map((day) => {
                 if (filterDay && filterDay !== day.key) return null;
-                const dayItems = filtered.filter(item => item.startsAt.slice(0, 10) === day.key);
+                const dayItems = filtered.filter((item) => item.startsAt.slice(0, 10) === day.key);
 
                 return (
                   <div
@@ -172,7 +228,9 @@ export default function SchedulePage() {
                   >
                     <div className="mb-3 flex items-start justify-between gap-2">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{day.short}</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {day.short}
+                        </p>
                         <p className={`text-lg font-bold ${isToday(day.date) ? 'text-primary' : ''}`}>
                           {new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(day.date)}
                         </p>
@@ -186,14 +244,19 @@ export default function SchedulePage() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {dayItems.map(item => (
-                          <div key={item.id} className={`rounded-lg border p-3 text-sm ${courseColorMap[item.courseId] || 'bg-muted/50 border-border'}`}>
+                        {dayItems.map((item) => (
+                          <div
+                            key={item.id}
+                            className={`rounded-lg border p-3 text-sm ${courseColorMap[item.courseId] || 'bg-muted/50 border-border'}`}
+                          >
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <p className="font-semibold">{item.course?.code}</p>
                                 <p className="truncate text-xs text-muted-foreground">{item.course?.title}</p>
                               </div>
-                              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${TYPE_COLORS[item.type] || ''}`}>
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${TYPE_COLORS[item.type] || ''}`}
+                              >
                                 {typeLabel(item.type)}
                               </span>
                             </div>

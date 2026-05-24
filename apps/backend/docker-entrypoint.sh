@@ -16,8 +16,19 @@ until echo "SELECT 1" | npx prisma db execute --stdin >/dev/null 2>&1; do
 done
 echo "Postgres is reachable."
 
-echo "Running database migrations..."
-npx prisma migrate deploy
+# NOTE on migrations:
+#   The original repo created the Quiz/Kahoot/QuizSession tables via
+#   `prisma db push` (no migration files committed). Later commits added
+#   incremental migrations (quiz_difficulty, user_achievements, telegram_chat_id)
+#   that reference those tables. `migrate deploy` therefore can't run cleanly
+#   on a fresh DB — the incremental migrations explode on missing tables.
+#
+#   Workaround: use `db push --accept-data-loss` to force-sync the schema.
+#   This bypasses migration tracking entirely and stamps whatever schema.prisma
+#   says onto the DB. Safe for dev/demo; would need a real backfill migration
+#   for production-with-existing-data.
+echo "Syncing schema (db push)..."
+npx prisma db push --skip-generate --accept-data-loss
 
 echo "Generating Prisma Client..."
 npx prisma generate

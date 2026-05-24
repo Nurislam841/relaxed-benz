@@ -13,8 +13,10 @@ export class GenerateQuizDto {
   @ApiProperty() @IsString() @IsNotEmpty() courseId: string;
   @ApiProperty() @IsString() @IsNotEmpty() topic: string;
   @ApiPropertyOptional({ default: 5 }) @IsOptional() @IsInt() @Min(1) @Max(20) questionCount?: number;
-  @ApiPropertyOptional({ enum: ['easy','medium','hard'], default: 'medium' })
-  @IsOptional() @IsIn(['easy','medium','hard']) difficulty?: string;
+  @ApiPropertyOptional({ enum: ['easy', 'medium', 'hard'], default: 'medium' })
+  @IsOptional()
+  @IsIn(['easy', 'medium', 'hard'])
+  difficulty?: string;
   @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
 }
 
@@ -55,5 +57,19 @@ export class StudyCoachDto {
  */
 export class ClassInsightsDto {
   @ApiProperty() @IsString() @IsNotEmpty() courseId: string;
+  @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
+}
+
+/**
+ * AI code review on a submission.
+ *
+ * The service pulls `submission.contentText` (and recognises a `language` hint
+ * if provided) and asks Claude to flag bugs / style / optimization issues
+ * with line numbers, so the UI can render them inline with the code.
+ */
+export class CodeReviewDto {
+  @ApiProperty() @IsString() @IsNotEmpty() submissionId: string;
+  /** Optional language hint: 'python', 'typescript', 'java', 'cpp', etc. */
+  @ApiPropertyOptional() @IsOptional() @IsString() language?: string;
   @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
 }

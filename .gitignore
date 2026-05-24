@@ -3,6 +3,26 @@ node_modules
 dist
 .idea
 .env
+.env.local
+.env.*.local
 __MACOSX
 .DS_Store
 *.log
+
+# Local upload directory — files belong in S3 in prod, on dev box otherwise.
+apps/backend/uploads/
+
+# Local-only docker-compose port remap (avoids Windows postgres / port conflicts).
+docker-compose.override.yml
+
+# Claude Code per-machine settings.
+.claude/settings.local.json
+
+# Playwright
+playwright-report
+test-results
+blob-report
+.playwright
+
+# Build/coverage
+coverage

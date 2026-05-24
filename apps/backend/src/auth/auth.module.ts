@@ -4,6 +4,8 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
+import { AchievementsModule } from '../achievements/achievements.module';
+import { TwoFactorModule } from '../two-factor/two-factor.module';
 
 @Module({
   imports: [
@@ -12,6 +14,8 @@ import { JwtStrategy } from './jwt.strategy';
       secret: process.env.JWT_SECRET || 'change-me-super-secret-jwt-key-at-least-32-chars',
       signOptions: { expiresIn: process.env.JWT_EXPIRATION || '15m' },
     }),
+    AchievementsModule,
+    TwoFactorModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

@@ -1,12 +1,33 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile, UploadedFiles, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  UploadedFiles,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { memoryStorage } from 'multer';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { AssignmentsService } from './assignments.service';
-import { CreateAssignmentDto, UpdateAssignmentDto, SubmitDto, GradeDto, CreateCommentDto, SaveDraftDto } from './assignments.dto';
+import {
+  CreateAssignmentDto,
+  UpdateAssignmentDto,
+  SubmitDto,
+  GradeDto,
+  CreateCommentDto,
+  SaveDraftDto,
+} from './assignments.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -43,15 +64,12 @@ const mimeFilter = (_req: any, file: Express.Multer.File, cb: (e: Error | null, 
   }
 };
 
-const uploadStorage = diskStorage({
-  destination: './uploads',
-  filename: (_req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, unique + extname(file.originalname));
-  },
-});
-
-const uploadOptions = { storage: uploadStorage, limits: { fileSize: MAX_FILE_SIZE }, fileFilter: mimeFilter };
+// Memory storage: multer keeps the file as a Buffer on `file.buffer` instead of
+// writing it to `./uploads`. StorageService then decides where the bytes
+// actually land (disk in dev, S3 in prod). Memory cost is bounded by
+// MAX_FILE_SIZE per file × FilesInterceptor's count limit (10 below) so for a
+// university LMS this is well within reason.
+const uploadOptions = { storage: memoryStorage(), limits: { fileSize: MAX_FILE_SIZE }, fileFilter: mimeFilter };
 
 @ApiTags('Assignments')
 @ApiBearerAuth()
@@ -76,19 +94,25 @@ export class AssignmentsController {
 
   @Get('assignments/:id')
   @ApiOperation({ summary: 'Get single assignment' })
-  one(@Param('id') id: string) { return this.svc.findOne(id); }
+  one(@Param('id') id: string) {
+    return this.svc.findOne(id);
+  }
 
   @Patch('assignments/:id')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN, Role.TEACHER)
   @ApiOperation({ summary: 'Update assignment (teacher/admin)' })
-  update(@Param('id') id: string, @Body() dto: UpdateAssignmentDto) { return this.svc.update(id, dto); }
+  update(@Param('id') id: string, @Body() dto: UpdateAssignmentDto) {
+    return this.svc.update(id, dto);
+  }
 
   @Delete('assignments/:id')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN, Role.TEACHER)
   @ApiOperation({ summary: 'Delete assignment (teacher/admin)' })
-  remove(@Param('id') id: string) { return this.svc.remove(id); }
+  remove(@Param('id') id: string) {
+    return this.svc.remove(id);
+  }
 
   @Post('assignments/:id/submit')
   @UseGuards(RolesGuard)
@@ -104,9 +128,8 @@ export class AssignmentsController {
   @UseInterceptors(FileInterceptor('file', uploadOptions))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Submit assignment with single file upload (student)' })
-  submitFile(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @CurrentUser() u: any) {
-    const fileUrl = file ? `/uploads/${file.filename}` : undefined;
-    return this.svc.submit(id, { fileUrl }, u.id);
+  async submitFile(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @CurrentUser() u: any) {
+    return this.svc.submitSingleFile(id, file, u.id);
   }
 
   @Post('assignments/:id/submit-files')
@@ -140,19 +163,25 @@ export class AssignmentsController {
 
   @Get('assignments/:id/submission')
   @ApiOperation({ summary: 'Get my submission' })
-  mySub(@Param('id') id: string, @CurrentUser() u: any) { return this.svc.getMySub(id, u.id); }
+  mySub(@Param('id') id: string, @CurrentUser() u: any) {
+    return this.svc.getMySub(id, u.id);
+  }
 
   @Get('assignments/:id/submissions')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN, Role.TEACHER)
   @ApiOperation({ summary: 'Get all submissions for assignment (teacher/admin)' })
-  allSubs(@Param('id') id: string) { return this.svc.allSubs(id); }
+  allSubs(@Param('id') id: string) {
+    return this.svc.allSubs(id);
+  }
 
   @Get('submissions/:id')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN, Role.TEACHER)
   @ApiOperation({ summary: 'Get single submission details (teacher/admin)' })
-  subById(@Param('id') id: string) { return this.svc.getSubById(id); }
+  subById(@Param('id') id: string) {
+    return this.svc.getSubById(id);
+  }
 
   @Post('submissions/:id/grade')
   @UseGuards(RolesGuard)
@@ -176,11 +205,7 @@ export class AssignmentsController {
   @UseInterceptors(FilesInterceptor('files', 10, uploadOptions))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload resource files to an assignment (teacher/admin)' })
-  uploadResources(
-    @Param('id') id: string,
-    @UploadedFiles() files: Express.Multer.File[],
-    @CurrentUser() u: any,
-  ) {
+  uploadResources(@Param('id') id: string, @UploadedFiles() files: Express.Multer.File[], @CurrentUser() u: any) {
     if (!files?.length) throw new BadRequestException('No files provided');
     return this.svc.uploadResources(id, files, u);
   }

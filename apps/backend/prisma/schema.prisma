@@ -35,6 +35,9 @@ enum NotificationType {
   ANNOUNCEMENT
   GRADE_PUBLISHED
   SYSTEM
+  ACHIEVEMENT
+  CLASS_REMINDER
+  DEADLINE_REMINDER
 }
 
 enum QuizSource {
@@ -49,6 +52,12 @@ enum QuizSessionStatus {
   CANCELLED
 }
 
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
 model User {
   id                  String              @id @default(uuid())
   email               String              @unique
@@ -57,6 +66,12 @@ model User {
   role                Role                @default(STUDENT)
   groupId             String?             @map("group_id")
   preferredLang       String?             @map("preferred_lang")
+  /// TOTP shared secret (base32). Null until user enables 2FA.
+  totpSecret          String?             @map("totp_secret")
+  /// 2FA is only enforced when this is true AND totpSecret is set.
+  totpEnabled         Boolean             @default(false) @map("totp_enabled")
+  /// Telegram chat_id (string of digits) linked by the user. When set, notifications fan out to TG too.
+  telegramChatId      String?             @map("telegram_chat_id")
   createdAt           DateTime            @default(now()) @map("created_at")
   updatedAt           DateTime            @updatedAt @map("updated_at")
   deletedAt           DateTime?           @map("deleted_at")
@@ -74,6 +89,7 @@ model User {
   quizzesCreated      Quiz[]              @relation("QuizCreatedBy")
   quizAttempts        QuizAttempt[]       @relation("QuizAttemptStudent")
   quizSessionsHosted  QuizSession[]       @relation("QuizSessionHost")
+  achievements        UserAchievement[]
 
   @@map("users")
 }
@@ -191,6 +207,7 @@ model Assignment {
   submissions Submission[]
   resources   AssignmentResource[]
   comments    AssignmentComment[]
+  plagiarismReports PlagiarismReport[]
 
   @@index([courseId])
   @@index([dueAt])
@@ -242,6 +259,8 @@ model Submission {
   student      User                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   grade        Grade?
   attachments  SubmissionAttachment[]
+  plagiarismReportsA PlagiarismReport[] @relation("PlagiarismSubmissionA")
+  plagiarismReportsB PlagiarismReport[] @relation("PlagiarismSubmissionB")
 
   @@unique([assignmentId, studentId])
   @@index([assignmentId])
@@ -263,6 +282,26 @@ model SubmissionAttachment {
   @@map("submission_attachments")
 }
 
+model PlagiarismReport {
+  id              String   @id @default(uuid())
+  assignmentId    String   @map("assignment_id")
+  submissionAId   String   @map("submission_a_id")
+  submissionBId   String   @map("submission_b_id")
+  similarity      Float
+  matchedNgrams   Int      @default(0) @map("matched_ngrams")
+  methodVersion   String   @default("jaccard-3gram-v1") @map("method_version")
+  createdAt       DateTime @default(now()) @map("created_at")
+  assignment      Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  submissionA     Submission @relation("PlagiarismSubmissionA", fields: [submissionAId], references: [id], onDelete: Cascade)
+  submissionB     Submission @relation("PlagiarismSubmissionB", fields: [submissionBId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionAId, submissionBId, methodVersion])
+  @@index([assignmentId])
+  @@index([submissionAId])
+  @@index([submissionBId])
+  @@map("plagiarism_reports")
+}
+
 model Grade {
   id           String     @id @default(uuid())
   submissionId String     @unique @map("submission_id")
@@ -278,17 +317,19 @@ model Grade {
 }
 
 model ScheduleItem {
-  id        String       @id @default(uuid())
-  courseId  String       @map("course_id")
-  groupId   String?      @map("group_id")
-  startsAt  DateTime     @map("starts_at")
-  endsAt    DateTime     @map("ends_at")
-  room      String
-  type      ScheduleType @default(LECTURE)
-  createdAt DateTime     @default(now()) @map("created_at")
-  deletedAt DateTime?    @map("deleted_at")
-  course    Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  group     Group?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  id              String       @id @default(uuid())
+  courseId        String       @map("course_id")
+  groupId         String?      @map("group_id")
+  startsAt        DateTime     @map("starts_at")
+  endsAt          DateTime     @map("ends_at")
+  room            String
+  type            ScheduleType @default(LECTURE)
+  /// Set by ReminderService once the "1h-before-class" Telegram blast has gone out — keeps us idempotent on cron retries.
+  reminderSentAt  DateTime?    @map("reminder_sent_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  deletedAt       DateTime?    @map("deleted_at")
+  course          Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  group           Group?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   @@index([courseId])
   @@index([startsAt])
@@ -383,12 +424,14 @@ model QuizQuestion {
   correctIndex Int                   @map("correct_index")
   explanation  String                @default("") @db.Text
   points       Int                   @default(100)
+  difficulty   QuestionDifficulty    @default(MEDIUM)
   createdAt    DateTime              @default(now()) @map("created_at")
   deletedAt    DateTime?             @map("deleted_at")
   quiz         Quiz                  @relation(fields: [quizId], references: [id], onDelete: Cascade)
   answers      QuizAttemptAnswer[]
 
   @@index([quizId])
+  @@index([quizId, difficulty])
   @@map("quiz_questions")
 }
 
@@ -447,4 +490,107 @@ model QuizSession {
   @@index([quizId])
   @@index([joinCode])
   @@map("quiz_sessions")
+}
+
+// Achievement definitions are NOT stored in the DB — they live in code
+// (achievements.catalog.ts) so the badge metadata (icon, name, criteria)
+// is version-controlled alongside the criteria evaluator.
+// Only the per-user grants are persisted, with the achievement key as a string.
+model UserAchievement {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  achievementKey  String   @map("achievement_key")
+  /// Free-form JSON snapshot that triggered the unlock (e.g. {"score":95,"quizId":"..."} for quiz_perfect)
+  metadata        Json?
+  earnedAt        DateTime @default(now()) @map("earned_at")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementKey])
+  @@index([userId])
+  @@map("user_achievements")
+}
+
+// ─── Telegram bot integration ────────────────────────────────────────────
+
+/// Mapping of a sent Telegram quiz poll back to the originating quiz question
+/// and student. Populated by QuizBroadcastService (Phase 2.1) and consumed by
+/// the `poll_answer` handler in TelegramUpdatesService to record the answer.
+model QuizTelegramPoll {
+  id          String    @id @default(uuid())
+  /// Telegram-side poll id (string). One row per (student × question) so we
+  /// can support resending the same quiz to the same chat later.
+  pollId      String    @unique @map("poll_id")
+  quizId      String    @map("quiz_id")
+  questionId  String    @map("question_id")
+  studentId   String    @map("student_id")
+  pickedIndex Int?      @map("picked_index")
+  answeredAt  DateTime? @map("answered_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([studentId])
+  @@index([quizId])
+  @@map("quiz_telegram_polls")
+}
+
+/// Live Kahoot subscription — student joined a session via `/join CODE` in
+/// the bot. The gateway fans out each question to every subscription's
+/// `chatId`, and the resulting poll_answer is matched back here.
+model KahootTelegramSubscription {
+  id        String   @id @default(uuid())
+  sessionId String   @map("session_id")
+  userId    String   @map("user_id")
+  /// We store the chat_id as string for consistency with User.telegramChatId.
+  chatId    String   @map("chat_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([sessionId, chatId], name: "sessionId_chatId")
+  @@index([sessionId])
+  @@map("kahoot_telegram_subscriptions")
+}
+
+/// Per-question poll record for live Kahoot sessions — pairs a Telegram poll
+/// with the question + session so we can score answers via the gateway path
+/// when the student taps an option in their chat.
+model KahootTelegramPoll {
+  id                 String   @id @default(uuid())
+  pollId             String   @unique @map("poll_id")
+  sessionId          String   @map("session_id")
+  questionId         String   @map("question_id")
+  chatId             String   @map("chat_id")
+  openPeriodSeconds  Int      @map("open_period_seconds")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([sessionId])
+  @@map("kahoot_telegram_polls")
+}
+
+/// Idempotency log for assignment-deadline reminders (Phase 3.2). Without
+/// this, a cron retry / overlap would double-blast students about the same
+/// deadline.
+model AssignmentReminderLog {
+  id           String   @id @default(uuid())
+  assignmentId String   @map("assignment_id")
+  userId       String   @map("user_id")
+  /// `h24` = 24h-before, `h1` = 1h-before. Composite-unique with assignmentId+userId.
+  kind         String
+  sentAt       DateTime @default(now()) @map("sent_at")
+
+  @@unique([assignmentId, userId, kind])
+  @@index([userId])
+  @@map("assignment_reminder_log")
+}
+
+/// A Telegram group chat bound to a course (Phase 4.2). When teachers post an
+/// ANNOUNCEMENT for the course, NotificationsService also broadcasts in this
+/// chat — saves linked students from getting both a DM and a group ping.
+model CourseTelegramGroup {
+  id        String   @id @default(uuid())
+  courseId  String   @unique @map("course_id")
+  /// Telegram group chat id — negative number stored as string (matches the
+  /// User.telegramChatId pattern; group ids are -100... in TG).
+  chatId    String   @map("chat_id")
+  boundById String   @map("bound_by_id")
+  boundAt   DateTime @default(now()) @map("bound_at")
+
+  @@map("course_telegram_groups")
 }
