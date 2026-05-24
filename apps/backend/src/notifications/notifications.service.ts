@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { getUserFacingBaseUrl } from '../common/public-url';
 
 type NotificationListener = (event: { type: 'refresh'; unreadCount: number }) => void;
 
@@ -58,7 +59,7 @@ export class NotificationsService {
     try {
       const group = await this.db.courseTelegramGroup.findUnique({ where: { courseId } });
       if (!group) return;
-      const baseUrl = process.env.FRONTEND_URL || process.env.BACKEND_PUBLIC_URL || '';
+      const baseUrl = getUserFacingBaseUrl();
       const absoluteLink =
         link && !link.startsWith('http') && baseUrl
           ? `${baseUrl.replace(/\/$/, '')}${link.startsWith('/') ? link : '/' + link}`
@@ -192,11 +193,9 @@ export class NotificationsService {
     notificationId: string | null,
     link: string | null,
   ): Array<Array<{ text: string; url?: string; callback_data?: string }>> {
-    const baseUrl = process.env.FRONTEND_URL || process.env.BACKEND_PUBLIC_URL || '';
+    const baseUrl = getUserFacingBaseUrl();
     const absoluteLink =
-      link && !link.startsWith('http') && baseUrl
-        ? `${baseUrl.replace(/\/$/, '')}${link.startsWith('/') ? link : '/' + link}`
-        : link;
+      link && !link.startsWith('http') && baseUrl ? `${baseUrl}${link.startsWith('/') ? link : '/' + link}` : link;
 
     switch (type) {
       case NotificationType.ASSIGNMENT_DUE: {

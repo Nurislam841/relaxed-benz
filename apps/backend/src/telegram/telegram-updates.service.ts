@@ -10,6 +10,7 @@ import { ScheduleService } from '../schedule/schedule.service';
 import { GradesService } from '../grades/grades.service';
 import { AssignmentsService } from '../assignments/assignments.service';
 import { KahootService } from '../kahoot/kahoot.service';
+import { getBackendPublicUrl, getFrontendUrl, getUserFacingBaseUrl } from '../common/public-url';
 
 /**
  * Inbound message router for the bot.
@@ -160,7 +161,7 @@ export class TelegramUpdatesService implements OnModuleInit {
     // Cold start — point them at the link flow.
     const linkButton = new InlineKeyboard().url(
       '🔗 Open UniLMS Profile',
-      (process.env.BACKEND_PUBLIC_URL || 'http://localhost:3007') + '/profile',
+      (getFrontendUrl() ?? getBackendPublicUrl() ?? 'http://localhost:3007') + '/profile',
     );
     await ctx.reply(
       "👋 Hi! I'm the UniLMS bot. To get started, link your account from your UniLMS Profile page — tap the button below.",
@@ -427,7 +428,10 @@ export class TelegramUpdatesService implements OnModuleInit {
   // ─── /app (Phase 4.1 Mini App) ──────────────────────────────────────────
 
   private async handleApp(ctx: Context) {
-    const baseUrl = process.env.BACKEND_PUBLIC_URL || process.env.FRONTEND_URL;
+    // Prefer the user-facing frontend URL for the Mini App; the Mini App is
+    // the LMS itself, not the API. Falls back to BACKEND_PUBLIC_URL only if
+    // someone deployed everything behind one host.
+    const baseUrl = getUserFacingBaseUrl();
     if (!baseUrl) {
       await ctx.reply('Mini App is not configured on this server yet.');
       return;

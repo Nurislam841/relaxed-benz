@@ -14,6 +14,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { KahootService } from './kahoot.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { getUserFacingBaseUrl } from '../common/public-url';
 import { QuizSessionStatus, Role } from '@prisma/client';
 
 interface SocketUser {
@@ -333,7 +334,7 @@ export class KahootGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.kahootSvc.leaderboard(sessionId),
     ]);
     if (subs.length === 0) return;
-    const baseUrl = process.env.FRONTEND_URL || process.env.BACKEND_PUBLIC_URL;
+    const baseUrl = getUserFacingBaseUrl();
     for (const sub of subs) {
       const me = board.find((b: any) => b.userId === sub.userId);
       const text = me

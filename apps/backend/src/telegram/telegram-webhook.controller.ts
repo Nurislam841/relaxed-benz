@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { TelegramService } from './telegram.service';
+import { getBackendPublicUrl } from '../common/public-url';
 
 /**
  * Public Telegram webhook endpoint + bot lifecycle controller.
@@ -47,7 +48,7 @@ export class TelegramWebhookController implements OnModuleInit, OnModuleDestroy 
     }
 
     const mode = (process.env.TELEGRAM_MODE || 'polling').toLowerCase();
-    const publicUrl = process.env.BACKEND_PUBLIC_URL;
+    const publicUrl = getBackendPublicUrl();
     const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET;
 
     if (mode === 'webhook') {
@@ -59,7 +60,7 @@ export class TelegramWebhookController implements OnModuleInit, OnModuleDestroy 
         return;
       }
       try {
-        const webhookUrl = `${publicUrl.replace(/\/$/, '')}/api/telegram/webhook`;
+        const webhookUrl = `${publicUrl}/api/telegram/webhook`;
         await bot.api.setWebhook(webhookUrl, {
           secret_token: secretToken || undefined,
           allowed_updates: [
