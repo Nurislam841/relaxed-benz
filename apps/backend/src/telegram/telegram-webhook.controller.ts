@@ -112,21 +112,22 @@ export class TelegramWebhookController implements OnModuleInit, OnModuleDestroy 
   @Post('webhook')
   @HttpCode(200)
   @ApiExcludeEndpoint()
-  async webhook(@Body() update: any, @Headers('x-telegram-bot-api-secret-token') secret?: string) {
+  webhook(@Body() update: any, @Headers('x-telegram-bot-api-secret-token') secret?: string) {
     const expected = process.env.TELEGRAM_WEBHOOK_SECRET;
     if (expected && secret !== expected) {
       throw new UnauthorizedException('invalid webhook secret');
     }
     const bot = this.tg.bot;
     if (!bot) return { ok: true }; // bot disabled — silently accept
-    // grammY processes the update through all registered middleware. We
-    // intentionally swallow errors (handlers should log their own) so
-    // Telegram doesn't retry-spam us on transient issues.
-    try {
-      await bot.handleUpdate(update);
-    } catch (e: any) {
+    // Process the update OUT OF BAND so Telegram receives the 200 ack within
+    // its 5-second timeout window — even when the actual handler is slow
+    // (AI streaming response, S3 upload, slow DB query, etc.). Telegram
+    // doesn't care about the response body; it only cares whether we
+    // acknowledged delivery. Handler errors are logged for debugging but
+    // never bubble up because Telegram would retry the same update.
+    void bot.handleUpdate(update).catch((e: any) => {
       this.logger.warn(`handleUpdate failed: ${e?.message ?? e}`);
-    }
+    });
     return { ok: true };
   }
 }
