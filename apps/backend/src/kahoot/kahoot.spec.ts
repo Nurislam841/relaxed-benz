@@ -140,4 +140,63 @@ describe('Kahoot (e2e)', () => {
     expect(fin.status).toBe(201);
     expect(fin.body.status).toBe('FINISHED');
   });
+
+  // ─── Post-session report (added with Kahoot-style flow) ─────────────────
+  describe('GET /api/kahoot/sessions/:id/report', () => {
+    it('returns aggregated session data for the host', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${sessionId}/report`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      // The frontend report page reads exactly these top-level keys.
+      expect(res.body.session).toBeDefined();
+      expect(res.body.session.joinCode).toBeDefined();
+      expect(res.body.summary).toBeDefined();
+      expect(typeof res.body.summary.totalPlayers).toBe('number');
+      expect(typeof res.body.summary.averageAccuracy).toBe('number');
+      expect(Array.isArray(res.body.perPlayer)).toBe(true);
+      expect(Array.isArray(res.body.perQuestion)).toBe(true);
+    });
+
+    it('perPlayer entries carry rank + accuracy + answers trail', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${sessionId}/report`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      if (res.body.perPlayer.length > 0) {
+        const p = res.body.perPlayer[0];
+        expect(typeof p.rank).toBe('number');
+        expect(typeof p.score).toBe('number');
+        expect(typeof p.accuracy).toBe('number');
+        expect(Array.isArray(p.answers)).toBe(true);
+      }
+    });
+
+    it('perQuestion entries include answer distribution + correctIndex', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${sessionId}/report`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      if (res.body.perQuestion.length > 0) {
+        const q = res.body.perQuestion[0];
+        expect(typeof q.questionText).toBe('string');
+        expect(typeof q.correctIndex).toBe('number');
+        expect(Array.isArray(q.answerDistribution)).toBe(true);
+        // distribution length should match options length on the question
+        expect(q.answerDistribution.length).toBe(q.options.length);
+      }
+    });
+
+    it('non-host (student) is blocked (403)', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${sessionId}/report`)
+        .set('Authorization', `Bearer ${studentToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('requires authentication (401)', async () => {
+      const res = await request(app.getHttpServer()).get(`/api/kahoot/sessions/${sessionId}/report`);
+      expect(res.status).toBe(401);
+    });
+  });
 });
