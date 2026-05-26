@@ -27,6 +27,18 @@ echo "Postgres is reachable."
 #   This bypasses migration tracking entirely and stamps whatever schema.prisma
 #   says onto the DB. Safe for dev/demo; would need a real backfill migration
 #   for production-with-existing-data.
+# Pre-migration data cleanup. The Achievements feature was removed in
+# May 2026; existing prod databases still have ACHIEVEMENT-typed rows in
+# `notifications` that block the enum value from being dropped during db
+# push. These statements are idempotent: on a fresh DB they match zero
+# rows / drop nothing. We swallow errors with `|| true` so any future
+# similar transition can land without bricking boot.
+echo "Pre-migration cleanup (legacy data)..."
+echo "DELETE FROM notifications WHERE type::text = 'ACHIEVEMENT';" \
+  | npx prisma db execute --stdin >/dev/null 2>&1 || true
+echo "DROP TABLE IF EXISTS user_achievements CASCADE;" \
+  | npx prisma db execute --stdin >/dev/null 2>&1 || true
+
 echo "Syncing schema (db push)..."
 npx prisma db push --skip-generate --accept-data-loss
 

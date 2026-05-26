@@ -1,6 +1,5 @@
 import { Controller, Get, Post, Body, UseGuards, HttpCode, NotFoundException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { JwtService } from '@nestjs/jwt';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -16,7 +15,6 @@ export class TelegramController {
   constructor(
     private db: PrismaService,
     private tg: TelegramService,
-    private jwt: JwtService,
   ) {}
 
   @Get('status')
@@ -77,23 +75,28 @@ export class TelegramController {
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({
-    summary: 'Generate a one-tap deep link for connecting Telegram (5 min TTL)',
+    summary:
+      'Generate linking artifacts: deep link (one-tap) AND a 6-digit code for the fallback /link command (5 min TTL)',
   })
   async linkToken(@CurrentUser() u: any) {
-    // We sign a short-lived JWT and pass it as the deep-link payload. When
-    // the user lands in @uni_lms_bot via the t.me link, the bot's /start
-    // handler verifies the JWT and writes telegramChatId. No copy-paste of
-    // chat_id required — this is the *one-tap* UX.
-    const token = await this.jwt.signAsync(
-      { sub: u.id },
-      {
-        expiresIn: '5m',
-        secret: process.env.TELEGRAM_LINK_SECRET || process.env.JWT_SECRET || 'change-me',
-      },
-    );
+    // Two parallel linking paths are returned:
+    //
+    //  1. `deepLink` — Telegram opens the bot with the code as ?start= payload.
+    //     This is one-tap UX *only when the chat is fresh* — Telegram drops
+    //     the payload silently if the user has already tapped Start before.
+    //
+    //  2. `code` — the same 6-digit code, displayed prominently in the UI.
+    //     User can paste it into the bot as `/link 123456`. Works for every
+    //     user regardless of their chat history with the bot. This is the
+    //     reliable fallback that we want users to see when one-tap fails.
+    //
+    // Both paths consume the same in-memory token, so whichever fires first
+    // wins and the other becomes a no-op.
+    const code = this.tg.generateLinkCode(u.id);
     const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'uni_lms_bot';
     return {
-      deepLink: `https://t.me/${botUsername}?start=link_${token}`,
+      deepLink: `https://t.me/${botUsername}?start=${code}`,
+      code,
       expiresIn: 300,
       botUsername,
     };

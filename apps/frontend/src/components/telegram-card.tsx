@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Send, Loader2, Unlink, MessageCircle, ExternalLink, Zap } from 'lucide-react';
+import { Send, Loader2, Unlink, MessageCircle, ExternalLink, Zap, Copy, Check } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,15 @@ interface StatusResponse {
 export function TelegramCard() {
   const qc = useQueryClient();
   const [chatId, setChatId] = useState('');
+  // After "Connect in one tap" we keep the freshly-issued code visible so the
+  // user can paste it into the bot as `/link 123456` if the deep link's
+  // payload was dropped by Telegram (happens for any returning user).
+  const [activeCode, setActiveCode] = useState<{
+    code: string;
+    botUsername: string;
+    expiresAt: number;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const { data: status } = useQuery<StatusResponse>({
     queryKey: ['telegram-status'],
@@ -64,19 +73,42 @@ export function TelegramCard() {
    * (e.g. linking from a desktop without Telegram installed).
    */
   const oneTapLink = useMutation({
-    mutationFn: () => api.post<{ deepLink: string; botUsername: string }>('/me/telegram/link-token', {}),
+    mutationFn: () =>
+      api.post<{ deepLink: string; code: string; botUsername: string; expiresIn: number }>(
+        '/me/telegram/link-token',
+        {},
+      ),
     onSuccess: (r) => {
+      setActiveCode({
+        code: r.code,
+        botUsername: r.botUsername,
+        expiresAt: Date.now() + r.expiresIn * 1000,
+      });
+      setCopied(false);
       window.open(r.deepLink, '_blank', 'noopener,noreferrer');
       toast({
         title: 'Opening Telegram…',
-        description: `Tap Start in @${r.botUsername} to finish linking.`,
+        description: `If linking doesn't complete automatically, paste the code into @${r.botUsername} as /link ${r.code}.`,
       });
-      // Refresh status after a few seconds so the UI flips to "linked" once
-      // the user completes the flow.
-      setTimeout(() => qc.invalidateQueries({ queryKey: ['telegram-status'] }), 8000);
+      // Poll status — flips the card to "linked" within ~10s if the user
+      // either tapped Start in the deep link OR sent /link <code>.
+      const poll = setInterval(() => {
+        qc.invalidateQueries({ queryKey: ['telegram-status'] });
+      }, 3000);
+      setTimeout(() => clearInterval(poll), 5 * 60 * 1000);
     },
     onError: (e: Error) => toast({ title: 'Could not start linking', description: e.message, variant: 'destructive' }),
   });
+
+  const copyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast({ title: 'Could not copy — please select manually', variant: 'destructive' });
+    }
+  };
 
   const test = useMutation({
     mutationFn: () => api.post<{ sent: boolean }>('/me/telegram/test', {}),
@@ -144,12 +176,57 @@ export function TelegramCard() {
             <div className="space-y-2">
               <Button onClick={() => oneTapLink.mutate()} disabled={oneTapLink.isPending} size="lg" className="w-full">
                 {oneTapLink.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-                Connect in one tap
+                {activeCode ? 'Generate new code' : 'Connect in one tap'}
               </Button>
               <p className="text-[11px] text-[var(--fg-muted)] text-center">
-                Opens Telegram → tap Start → done. No copy-paste needed.
+                Opens Telegram → tap Start. Or paste the code below into the bot if Start doesn't appear.
               </p>
             </div>
+
+            {/* Active code display — primary visible state after click */}
+            {activeCode && (
+              <div className="rounded-md border border-[var(--accent-300)] dark:border-[var(--accent-500)]/30 bg-[var(--accent-50)] dark:bg-[var(--accent-500)]/10 p-4 space-y-3">
+                <div>
+                  <p className="text-[11px] font-mono uppercase tracking-wider text-[var(--fg-muted)]">
+                    Your linking code (expires in 5 min)
+                  </p>
+                  <div className="flex items-center justify-between gap-2 mt-1">
+                    <code className="font-mono text-3xl font-bold tracking-[0.2em] text-[var(--accent-800)] dark:text-[var(--accent-200)]">
+                      {activeCode.code}
+                    </code>
+                    <Button size="sm" variant="ghost" onClick={() => copyCode(activeCode.code)}>
+                      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copied ? 'Copied' : 'Copy'}
+                    </Button>
+                  </div>
+                </div>
+                <ol className="text-[13px] text-[var(--fg-muted)] space-y-1 leading-relaxed">
+                  <li>
+                    <span className="font-semibold text-[var(--fg)]">1.</span> Open{' '}
+                    <a
+                      href={`https://t.me/${activeCode.botUsername}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--accent-700)] hover:underline inline-flex items-center gap-0.5"
+                    >
+                      @{activeCode.botUsername}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>{' '}
+                    in Telegram
+                  </li>
+                  <li>
+                    <span className="font-semibold text-[var(--fg)]">2.</span> Send{' '}
+                    <code className="font-mono px-1.5 py-0.5 rounded bg-[var(--bg)] border border-[var(--border-color)]">
+                      /link {activeCode.code}
+                    </code>
+                  </li>
+                  <li>
+                    <span className="font-semibold text-[var(--fg)]">3.</span> Bot replies "✅ UniLMS linked!" and this
+                    card flips to ON
+                  </li>
+                </ol>
+              </div>
+            )}
 
             <div className="flex items-center gap-2 text-[11px] text-[var(--fg-muted)] uppercase tracking-wide">
               <div className="h-px flex-1 bg-[var(--border-color)]" />

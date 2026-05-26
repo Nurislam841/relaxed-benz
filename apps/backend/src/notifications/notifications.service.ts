@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
-import { getUserFacingBaseUrl } from '../common/public-url';
+import { getUserFacingBaseUrl, isTelegramSafeUrl } from '../common/public-url';
 
 type NotificationListener = (event: { type: 'refresh'; unreadCount: number }) => void;
 
@@ -60,10 +60,11 @@ export class NotificationsService {
       const group = await this.db.courseTelegramGroup.findUnique({ where: { courseId } });
       if (!group) return;
       const baseUrl = getUserFacingBaseUrl();
-      const absoluteLink =
+      const rawAbsolute =
         link && !link.startsWith('http') && baseUrl
           ? `${baseUrl.replace(/\/$/, '')}${link.startsWith('/') ? link : '/' + link}`
           : link;
+      const absoluteLink = isTelegramSafeUrl(rawAbsolute) ? rawAbsolute : null;
       const buttons = absoluteLink ? [[{ text: '🔗 Open in UniLMS', url: absoluteLink }]] : [];
       const text = `📢 *${title}*\n\n${body}`;
       if (buttons.length > 0) {
@@ -193,8 +194,11 @@ export class NotificationsService {
     link: string | null,
   ): Array<Array<{ text: string; url?: string; callback_data?: string }>> {
     const baseUrl = getUserFacingBaseUrl();
-    const absoluteLink =
+    const rawAbsolute =
       link && !link.startsWith('http') && baseUrl ? `${baseUrl}${link.startsWith('/') ? link : '/' + link}` : link;
+    // Telegram only allows https in inline button URLs. If the deployment
+    // target is local (http://localhost) we skip the URL — text-only message.
+    const absoluteLink = isTelegramSafeUrl(rawAbsolute) ? rawAbsolute : null;
 
     switch (type) {
       case NotificationType.ASSIGNMENT_DUE: {

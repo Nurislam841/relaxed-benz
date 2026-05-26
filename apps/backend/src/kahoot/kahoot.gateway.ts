@@ -14,7 +14,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { KahootService } from './kahoot.service';
 import { TelegramService } from '../telegram/telegram.service';
-import { getUserFacingBaseUrl } from '../common/public-url';
+import { getUserFacingBaseUrl, isTelegramSafeUrl } from '../common/public-url';
 import { QuizSessionStatus, Role } from '@prisma/client';
 
 interface SocketUser {
@@ -343,11 +343,14 @@ export class KahootGateway implements OnGatewayConnection, OnGatewayDisconnect {
             .map((b: any, i: number) => `${i + 1}\\. ${b.fullName} — ${b.score}`)
             .join('\n')}`
         : '🏁 *Game over!*';
-      if (baseUrl) {
+      const reportUrl = baseUrl ? `${baseUrl}/kahoot/host/${sessionId}/report` : '';
+      if (isTelegramSafeUrl(reportUrl)) {
         await this.telegram.sendMessageWithButtons(sub.chatId, text, [
-          [{ text: '📊 Detailed report', url: `${baseUrl}/kahoot/host/${sessionId}/report` }],
+          [{ text: '📊 Detailed report', url: reportUrl }],
         ]);
       } else {
+        // Local dev with http://localhost — Telegram rejects the URL.
+        // Just send the text message without the button.
         await this.telegram.sendMessage(sub.chatId, text);
       }
     }

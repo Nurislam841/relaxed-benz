@@ -106,6 +106,43 @@ export class TelegramService {
     return !!this._bot;
   }
 
+  // ─── Code-based linking (the bullet-proof linking path) ─────────────────
+  //
+  // Telegram only forwards a `?start=<payload>` deep-link payload on the
+  // **first** /start of a fresh chat. Returning users (anyone who already
+  // tapped Start once) lose the payload — Telegram just opens the chat.
+  // To make linking reliable for those users, the frontend asks for a
+  // short numeric code and the user pastes it into the bot as `/link 123456`.
+  // The code is single-use, in-memory, expires in 5 minutes — no DB row
+  // and no schema migration needed.
+  private linkCodes = new Map<string, { userId: string; expiresAt: number }>();
+
+  generateLinkCode(userId: string): string {
+    // 6 random digits — plenty for ~5-min window. Collision odds in a
+    // single-tenant deploy are negligible; if a collision happens we just
+    // overwrite (the earlier code becomes invalid, which is fine — the
+    // user who generated it can press Connect again).
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    this.linkCodes.set(code, { userId, expiresAt: Date.now() + 5 * 60 * 1000 });
+    // Opportunistic cleanup of expired entries to keep the Map small.
+    const now = Date.now();
+    for (const [k, v] of this.linkCodes) if (v.expiresAt < now) this.linkCodes.delete(k);
+    return code;
+  }
+
+  /**
+   * Look up the userId tied to a code and remove the entry (one-shot).
+   * Returns null if code is unknown or expired — callers should show a
+   * friendly "code expired" message rather than leak existence.
+   */
+  consumeLinkCode(code: string): string | null {
+    const entry = this.linkCodes.get(code);
+    if (!entry) return null;
+    this.linkCodes.delete(code);
+    if (entry.expiresAt < Date.now()) return null;
+    return entry.userId;
+  }
+
   /**
    * Direct bot access for handler registration ([TelegramUpdatesService])
    * and for unusual flows that need raw `bot.api.*` calls. Returns null when

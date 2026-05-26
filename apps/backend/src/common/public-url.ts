@@ -39,3 +39,14 @@ export function getFrontendUrl(): string | undefined {
 export function getUserFacingBaseUrl(): string {
   return getFrontendUrl() ?? getBackendPublicUrl() ?? '';
 }
+
+/**
+ * Telegram rejects `http://localhost`, `http://127.0.0.1`, and any non-HTTPS
+ * URL in inline keyboard buttons (`url` and `web_app` field) with
+ * 400 Bad Request — which crashes the bot polling loop. Callers should
+ * gate their button construction on this so the message still goes out
+ * (just without a clickable link).
+ */
+export function isTelegramSafeUrl(url: string | undefined | null): url is string {
+  return !!url && url.startsWith('https://');
+}

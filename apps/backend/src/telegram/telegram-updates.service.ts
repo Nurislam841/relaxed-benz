@@ -62,6 +62,7 @@ export class TelegramUpdatesService implements OnModuleInit {
 
     // ── Slash commands ────────────────────────────────────────────────────
     bot.command('start', (ctx) => this.handleStart(ctx));
+    bot.command('link', (ctx) => this.handleLink(ctx));
     bot.command('help', (ctx) => this.handleHelp(ctx));
     bot.command('today', (ctx) => this.handleToday(ctx));
     bot.command('schedule', (ctx) => this.handleSchedule(ctx));
@@ -104,10 +105,20 @@ export class TelegramUpdatesService implements OnModuleInit {
         { command: 'app', description: 'Open UniLMS inside Telegram' },
         { command: 'join', description: 'Join a live Kahoot session — /join CODE' },
         { command: 'submit', description: 'Submit an assignment — /submit <id> then send photo' },
+        { command: 'link', description: 'Connect your UniLMS account — /link 123456' },
         { command: 'help', description: 'How to use the bot' },
         { command: 'unlink', description: 'Disconnect this Telegram from UniLMS' },
       ])
       .catch((e) => this.logger.warn(`setMyCommands failed: ${e}`));
+
+    // Global error handler — without this, ANY handler throw crashes the
+    // polling loop entirely (grammY default behaviour). Most likely cause
+    // of a throw is a Telegram API rejection (bad URL, blocked by user,
+    // chat not found, etc.). Log it and move on.
+    bot.catch((err) => {
+      const ctx = err.ctx;
+      this.logger.error(`Telegram handler error in update ${ctx?.update?.update_id}: ${err.error}`);
+    });
 
     this.logger.log('Telegram inbound handlers registered');
   }
@@ -130,7 +141,16 @@ export class TelegramUpdatesService implements OnModuleInit {
     const text = ctx.message?.text ?? '';
     const payload = text.split(' ').slice(1).join(' ').trim(); // /start <payload>
 
-    // Deep-link linking flow (Phase 1.5) — payload looks like `link_<jwt>`.
+    // 6-digit code from the new linking flow (in-memory store in
+    // TelegramService). Works whether the user came via deep link OR
+    // wrote `/start 123456` manually.
+    if (/^\d{6}$/.test(payload)) {
+      await this.linkByCode(ctx, payload);
+      return;
+    }
+
+    // Legacy: JWT-based payload `link_<jwt>` from earlier versions. Keep
+    // supported in case a stale frontend tab generates one.
     if (payload.startsWith('link_')) {
       const token = payload.slice('link_'.length);
       try {
@@ -141,9 +161,7 @@ export class TelegramUpdatesService implements OnModuleInit {
           where: { id: decoded.sub },
           data: { telegramChatId: String(ctx.from.id) },
         });
-        await ctx.reply("✅ *UniLMS linked\\!* You'll get notifications here\\. Try /today, /grades, /ask\\.", {
-          parse_mode: 'MarkdownV2',
-        });
+        await ctx.reply("✅ UniLMS linked! You'll get notifications here. Try /today, /grades, /ask.");
         return;
       } catch (e) {
         await ctx.reply('❌ This link expired or is invalid. Open the link from your UniLMS Profile page again.');
@@ -159,24 +177,79 @@ export class TelegramUpdatesService implements OnModuleInit {
     }
 
     // Cold start — point them at the link flow.
-    const linkButton = new InlineKeyboard().url(
-      '🔗 Open UniLMS Profile',
-      (getFrontendUrl() ?? getBackendPublicUrl() ?? 'http://localhost:3007') + '/profile',
-    );
+    // Telegram rejects http://localhost URLs in inline buttons (only https
+    // public URLs allowed). In local dev we omit the button and ask the user
+    // to open the LMS manually; in prod the URL is https://… and the button
+    // works.
+    const baseUrl = getFrontendUrl() ?? getBackendPublicUrl();
+    const canUseButton = !!baseUrl && baseUrl.startsWith('https://');
+    const linkButton = canUseButton
+      ? new InlineKeyboard().url('🔗 Open UniLMS Profile', `${baseUrl}/profile`)
+      : undefined;
     await ctx.reply(
-      "👋 Hi! I'm the UniLMS bot. To get started, link your account from your UniLMS Profile page — tap the button below.",
-      { reply_markup: linkButton },
+      canUseButton
+        ? "👋 Hi! I'm the UniLMS bot. To get started, link your account from your UniLMS Profile page — tap the button below."
+        : '👋 Hi! I\'m the UniLMS bot. To get started, open the UniLMS web app, go to your Profile and tap "Connect Telegram in one tap".',
+      linkButton ? { reply_markup: linkButton } : undefined,
     );
+  }
+
+  // ─── /link <code> — the always-works fallback linking path ──────────────
+  //
+  // Why this exists: Telegram only forwards the `?start=<payload>` deep-link
+  // payload when the user opens a chat with the bot for the *first* time.
+  // Anyone who has tapped Start before (most users on second linking attempt,
+  // or anyone who interacted with the bot at all) gets a payload-less /start.
+  // The web app's "Connect" button gives the user a 6-digit code to paste
+  // here so the linking succeeds regardless of chat history.
+
+  private async handleLink(ctx: Context) {
+    const code = ctx.message?.text?.split(/\s+/)[1];
+    if (!code || !/^\d{6}$/.test(code)) {
+      await ctx.reply(
+        'Usage: /link 123456\n\nOpen your UniLMS Profile → tap "Connect Telegram in one tap" to get a code.',
+      );
+      return;
+    }
+    await this.linkByCode(ctx, code);
+  }
+
+  /** Shared linking helper for `/start <code>` and `/link <code>`. */
+  private async linkByCode(ctx: Context, code: string) {
+    if (!ctx.from) return;
+    const userId = this.tg.consumeLinkCode(code);
+    if (!userId) {
+      await ctx.reply(
+        '❌ Code not recognised or expired (5-minute TTL). Open your UniLMS Profile and tap "Connect Telegram in one tap" to generate a fresh code.',
+      );
+      return;
+    }
+    try {
+      await this.db.user.update({
+        where: { id: userId },
+        data: { telegramChatId: String(ctx.from.id) },
+      });
+      await ctx.reply("✅ UniLMS linked! You'll get notifications here. Try /today, /grades, /ask.");
+    } catch (e: any) {
+      // Most common cause: the user row was deleted between code generation
+      // and use. Rare but possible — surface a clean error and let them retry.
+      this.logger.warn(`linkByCode failed for user ${userId}: ${e?.message ?? e}`);
+      await ctx.reply('❌ Could not link — try generating a new code from your UniLMS Profile.');
+    }
   }
 
   // ─── /help ──────────────────────────────────────────────────────────────
 
   private async handleHelp(ctx: Context) {
+    // Plain text instead of MarkdownV2 — the docs include angle-brackets and
+    // parentheses (e.g. "/ask <question>", "(AI)") which would need escaping
+    // under MarkdownV2 or Telegram rejects the message with 400 Bad Request.
+    // Keeping it plain is faster to maintain than juggling escapes.
     await ctx.reply(
       [
-        '*UniLMS bot — commands*',
+        'UniLMS bot — commands',
         '',
-        '*For students:*',
+        '— For students —',
         "/today — today's schedule + due assignments",
         '/schedule — week ahead',
         '/grades — latest grades',
@@ -187,16 +260,16 @@ export class TelegramUpdatesService implements OnModuleInit {
         '/submit <assignmentId> — submit a photo / PDF',
         '/app — open full UniLMS inside Telegram',
         '',
-        '*For teachers:*',
-        '/at\\_risk <courseId> — at\\-risk students (AI)',
-        '/today\\_attendance <courseId> — quick stats',
+        '— For teachers —',
+        '/at_risk <courseId> — at-risk students (AI)',
+        '/today_attendance <courseId> — quick stats',
         '/bind <courseCode> — link this group to a course',
         '/unbind — unlink group',
         '',
-        '*Other:*',
+        '— Other —',
+        '/link 123456 — connect your UniLMS account (get the code from your Profile)',
         '/unlink — disconnect this Telegram',
       ].join('\n'),
-      { parse_mode: 'MarkdownV2' },
     );
   }
 
@@ -225,9 +298,9 @@ export class TelegramUpdatesService implements OnModuleInit {
       const start = new Date(s.startsAt);
       const end = new Date(s.endsAt);
       const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-      return `🕐 *${hhmm(start)}–${hhmm(end)}* · ${this.tg.escapeMarkdownV2(s.course?.title ?? 'Course')} · ${this.tg.escapeMarkdownV2(s.room ?? '')}`;
+      return `🕐 *${hhmm(start)}–${hhmm(end)}* · ${s.course?.title ?? 'Course'} · ${s.room ?? ''}`;
     });
-    await ctx.reply(`*Today's schedule*\n\n${lines.join('\n')}`, { parse_mode: 'MarkdownV2' });
+    await ctx.reply(`*Today's schedule*\n\n${lines.join('\n')}`);
   }
 
   // ─── /schedule (week ahead) ─────────────────────────────────────────────
@@ -265,9 +338,7 @@ export class TelegramUpdatesService implements OnModuleInit {
       '',
       ...Array.from(byDay.entries()).flatMap(([day, lines]) => [`*${day}*`, ...lines]),
     ].join('\n');
-    await ctx.reply(this.tg.escapeMarkdownV2(text).replace(/\\\*/g, '*'), {
-      parse_mode: 'MarkdownV2',
-    });
+    await ctx.reply(text.replace(/\\\*/g, '*'), {});
   }
 
   // ─── /grades ────────────────────────────────────────────────────────────
@@ -287,9 +358,9 @@ export class TelegramUpdatesService implements OnModuleInit {
       const a = g.submission?.assignment;
       const max = a?.maxScore ?? 100;
       const pct = Math.round((g.score / max) * 100);
-      return `📊 *${pct}%* (${g.score}/${max}) — ${this.tg.escapeMarkdownV2(a?.title ?? '?')} · ${this.tg.escapeMarkdownV2(a?.course?.title ?? '')}`;
+      return `📊 *${pct}%* (${g.score}/${max}) — ${a?.title ?? '?'} · ${a?.course?.title ?? ''}`;
     });
-    await ctx.reply(`*Latest grades*\n\n${lines.join('\n')}`, { parse_mode: 'MarkdownV2' });
+    await ctx.reply(`*Latest grades*\n\n${lines.join('\n')}`);
   }
 
   // ─── /upcoming (assignments due this week) ──────────────────────────────
@@ -325,9 +396,9 @@ export class TelegramUpdatesService implements OnModuleInit {
       const due = new Date(a.dueAt);
       const hhmm = `${String(due.getHours()).padStart(2, '0')}:${String(due.getMinutes()).padStart(2, '0')}`;
       const date = `${due.getDate()}/${due.getMonth() + 1} ${hhmm}`;
-      return `📝 *${date}* — ${this.tg.escapeMarkdownV2(a.title)} · ${this.tg.escapeMarkdownV2(a.course?.title ?? '')}`;
+      return `📝 *${date}* — ${a.title} · ${a.course?.title ?? ''}`;
     });
-    await ctx.reply(`*Upcoming assignments*\n\n${lines.join('\n')}`, { parse_mode: 'MarkdownV2' });
+    await ctx.reply(`*Upcoming assignments*\n\n${lines.join('\n')}`);
   }
 
   // ─── /ask <question> ────────────────────────────────────────────────────
@@ -340,7 +411,7 @@ export class TelegramUpdatesService implements OnModuleInit {
     const text = ctx.message?.text ?? '';
     const question = text.split(' ').slice(1).join(' ').trim();
     if (!question) {
-      await ctx.reply('Usage: `/ask <your question>`', { parse_mode: 'MarkdownV2' });
+      await ctx.reply('Usage: `/ask <your question>`');
       return;
     }
     await this.streamAiResponse(ctx, user.id, question);
@@ -353,7 +424,7 @@ export class TelegramUpdatesService implements OnModuleInit {
    */
   private async streamAiResponse(ctx: Context, userId: string, question: string) {
     if (!ctx.chat) return;
-    const sent = await ctx.reply('🤖 _Thinking…_', { parse_mode: 'MarkdownV2' });
+    const sent = await ctx.reply('🤖 _Thinking…_');
     if (!sent) return;
     let acc = '';
     let lastEdit = Date.now();
@@ -363,22 +434,14 @@ export class TelegramUpdatesService implements OnModuleInit {
         acc += chunk;
         if (Date.now() - lastEdit > 700) {
           lastEdit = Date.now();
-          await ctx.api
-            .editMessageText(ctx.chat.id, sent.message_id, this.tg.escapeMarkdownV2(acc), {
-              parse_mode: 'MarkdownV2',
-            })
-            .catch(() => undefined);
+          await ctx.api.editMessageText(ctx.chat.id, sent.message_id, acc).catch(() => undefined);
         }
       }
     } catch (e) {
       this.logger.warn(`AI stream failed: ${e}`);
     }
     // Final flush — even if last chunk arrived inside the throttle window.
-    await ctx.api
-      .editMessageText(ctx.chat.id, sent.message_id, this.tg.escapeMarkdownV2(acc || '(no response)'), {
-        parse_mode: 'MarkdownV2',
-      })
-      .catch(() => undefined);
+    await ctx.api.editMessageText(ctx.chat.id, sent.message_id, acc || '(no response)').catch(() => undefined);
   }
 
   // ─── /coach ─────────────────────────────────────────────────────────────
@@ -398,19 +461,15 @@ export class TelegramUpdatesService implements OnModuleInit {
         `*Current grade:* ${t.currentGrade}`,
         `*Predicted final:* ${t.predictedFinalGrade}`,
         `*Trend:* ${t.trend}`,
-        `*To get an A:* ${this.tg.escapeMarkdownV2(t.requirementForA)}`,
+        `*To get an A:* ${t.requirementForA}`,
         '',
         '*Weaknesses*',
-        ...coach.weaknesses
-          .slice(0, 3)
-          .map((w: any) => `• ${this.tg.escapeMarkdownV2(w.topic)} — _${this.tg.escapeMarkdownV2(w.severity)}_`),
+        ...coach.weaknesses.slice(0, 3).map((w: any) => `• ${w.topic} — _${w.severity}_`),
         '',
         '*Next 3 days*',
-        ...coach.studyPlan
-          .slice(0, 3)
-          .map((p: any) => `Day ${p.day} — ${this.tg.escapeMarkdownV2(p.focus)} (${p.estimatedMinutes} min)`),
+        ...coach.studyPlan.slice(0, 3).map((p: any) => `Day ${p.day} — ${p.focus} (${p.estimatedMinutes} min)`),
       ];
-      await ctx.reply(lines.join('\n'), { parse_mode: 'MarkdownV2' });
+      await ctx.reply(lines.join('\n'));
     } catch (e) {
       await ctx.reply('❌ Could not generate coach report right now.');
     }
@@ -432,8 +491,14 @@ export class TelegramUpdatesService implements OnModuleInit {
     // the LMS itself, not the API. Falls back to BACKEND_PUBLIC_URL only if
     // someone deployed everything behind one host.
     const baseUrl = getUserFacingBaseUrl();
-    if (!baseUrl) {
-      await ctx.reply('Mini App is not configured on this server yet.');
+    // Telegram's WebApp button requires https. Skip the Mini App entirely
+    // in local dev where we only have http://localhost — instead point the
+    // user at the regular browser app.
+    if (!baseUrl || !baseUrl.startsWith('https://')) {
+      await ctx.reply(
+        'Mini App requires HTTPS and is only available on the production deployment. ' +
+          'Open UniLMS in your browser instead.',
+      );
       return;
     }
     const kb = new InlineKeyboard().webApp('🚀 Open UniLMS', `${baseUrl}/?tg=1`);
@@ -450,7 +515,7 @@ export class TelegramUpdatesService implements OnModuleInit {
     const text = ctx.message?.text ?? '';
     const code = text.split(' ').slice(1).join(' ').trim().toUpperCase();
     if (!code) {
-      await ctx.reply('Usage: `/join CODE`', { parse_mode: 'MarkdownV2' });
+      await ctx.reply('Usage: `/join CODE`');
       return;
     }
     try {
@@ -468,10 +533,7 @@ export class TelegramUpdatesService implements OnModuleInit {
           update: { userId: user.id },
         })
         .catch(() => undefined); // table may not exist yet during migration
-      await ctx.reply(
-        `✅ Joined "${this.tg.escapeMarkdownV2(session.quizTitle)}" lobby\\. Wait for the host to start\\.`,
-        { parse_mode: 'MarkdownV2' },
-      );
+      await ctx.reply(`✅ Joined "${session.quizTitle}" lobby\\. Wait for the host to start\\.`, {});
     } catch (e: any) {
       await ctx.reply(`❌ ${e?.message || 'Could not join'}`);
     }
@@ -485,9 +547,7 @@ export class TelegramUpdatesService implements OnModuleInit {
     const text = ctx.message?.text ?? '';
     const assignmentId = text.split(' ').slice(1).join(' ').trim();
     if (!assignmentId) {
-      await ctx.reply('Usage: `/submit <assignmentId>` then send a photo or PDF', {
-        parse_mode: 'MarkdownV2',
-      });
+      await ctx.reply('Usage: `/submit <assignmentId>` then send a photo or PDF', {});
       return;
     }
     const assignment = await this.db.assignment.findUnique({
@@ -593,7 +653,7 @@ export class TelegramUpdatesService implements OnModuleInit {
     const text = ctx.message?.text ?? '';
     const code = text.split(' ').slice(1).join(' ').trim();
     if (!code) {
-      await ctx.reply('Usage: `/bind <courseCode>` (e.g. /bind CS101)', { parse_mode: 'MarkdownV2' });
+      await ctx.reply('Usage: `/bind <courseCode>` (e.g. /bind CS101)');
       return;
     }
     const course = await this.db.course.findFirst({ where: { code: { equals: code, mode: 'insensitive' } } });
@@ -633,7 +693,7 @@ export class TelegramUpdatesService implements OnModuleInit {
     }
     const text = ctx.message?.text ?? '';
     const code = text.split(' ').slice(1).join(' ').trim();
-    if (!code) return ctx.reply('Usage: `/at_risk <courseCode>`', { parse_mode: 'MarkdownV2' });
+    if (!code) return ctx.reply('Usage: `/at_risk <courseCode>`');
 
     const course = await this.db.course.findFirst({ where: { code: { equals: code, mode: 'insensitive' } } });
     if (!course) return ctx.reply(`❌ Course "${code}" not found.`);
@@ -643,16 +703,14 @@ export class TelegramUpdatesService implements OnModuleInit {
     try {
       const insights = await this.ai.getClassInsights({ courseId: course.id }, user.id, user.role);
       const lines = [
-        `*At-risk students in ${this.tg.escapeMarkdownV2(course.code)}*`,
+        `*At-risk students in ${course.code}*`,
         '',
-        ...insights.atRiskStudents
-          .slice(0, 10)
-          .map((s: any) => `⚠️ ${this.tg.escapeMarkdownV2(s.fullName)} — ${this.tg.escapeMarkdownV2(s.reason ?? '')}`),
+        ...insights.atRiskStudents.slice(0, 10).map((s: any) => `⚠️ ${s.fullName} — ${s.reason ?? ''}`),
       ];
       if (insights.atRiskStudents.length === 0) {
         lines.push('🎉 Nobody is currently at risk.');
       }
-      await ctx.reply(lines.join('\n'), { parse_mode: 'MarkdownV2' });
+      await ctx.reply(lines.join('\n'));
     } catch (e) {
       await ctx.reply('❌ Could not load insights.');
     }
@@ -667,7 +725,7 @@ export class TelegramUpdatesService implements OnModuleInit {
     }
     const text = ctx.message?.text ?? '';
     const code = text.split(' ').slice(1).join(' ').trim();
-    if (!code) return ctx.reply('Usage: `/today_attendance <courseCode>`', { parse_mode: 'MarkdownV2' });
+    if (!code) return ctx.reply('Usage: `/today_attendance <courseCode>`');
 
     const course = await this.db.course.findFirst({ where: { code: { equals: code, mode: 'insensitive' } } });
     if (!course) return ctx.reply(`❌ Course "${code}" not found.`);
@@ -686,9 +744,9 @@ export class TelegramUpdatesService implements OnModuleInit {
     const late = records.filter((r) => r.status === 'LATE').length;
     const pct = enrollCount > 0 ? Math.round((present / enrollCount) * 100) : 0;
     await ctx.reply(
-      `*Today's attendance — ${this.tg.escapeMarkdownV2(course.code)}*\n\n` +
+      `*Today's attendance — ${course.code}*\n\n` +
         `✅ Present: ${present}\n❌ Absent: ${absent}\n⏰ Late: ${late}\n_${pct}% of ${enrollCount} students_`,
-      { parse_mode: 'MarkdownV2' },
+      {},
     );
   }
 
@@ -732,15 +790,15 @@ export class TelegramUpdatesService implements OnModuleInit {
         const lines = [
           '*🤖 AI feedback*',
           '',
-          `*Assessment:* ${this.tg.escapeMarkdownV2(fb.assessment)}`,
+          `*Assessment:* ${fb.assessment}`,
           '',
           '*Strengths*',
-          ...fb.strengths.slice(0, 3).map((s: string) => `✅ ${this.tg.escapeMarkdownV2(s)}`),
+          ...fb.strengths.slice(0, 3).map((s: string) => `✅ ${s}`),
           '',
           '*Improvements*',
-          ...fb.improvements.slice(0, 3).map((s: string) => `🔧 ${this.tg.escapeMarkdownV2(s)}`),
+          ...fb.improvements.slice(0, 3).map((s: string) => `🔧 ${s}`),
         ];
-        if (ctx.chat) await ctx.api.sendMessage(ctx.chat.id, lines.join('\n'), { parse_mode: 'MarkdownV2' });
+        if (ctx.chat) await ctx.api.sendMessage(ctx.chat.id, lines.join('\n'));
       } catch (e) {
         if (ctx.chat) await ctx.api.sendMessage(ctx.chat.id, '❌ Could not generate feedback.');
       }

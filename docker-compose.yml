@@ -54,6 +54,12 @@ services:
   frontend:
     build:
       context: ./apps/frontend
+      # Next.js inlines NEXT_PUBLIC_* into the bundle at BUILD time. Passing
+      # the same value as the runtime env (below) keeps server-side rewrites
+      # and client-side fetch in sync. Without this, the Dockerfile's ARG
+      # default of "/api" bakes a self-referencing rewrite that returns 404.
+      args:
+        NEXT_PUBLIC_API_URL: http://backend:4000/api
     restart: unless-stopped
     ports:
       - '3000:3000'
