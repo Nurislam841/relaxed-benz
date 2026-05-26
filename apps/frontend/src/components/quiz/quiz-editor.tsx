@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback } from 'react';
-import { Trash2, ArrowUp, ArrowDown, Plus, CheckCircle2, Circle } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { Trash2, ArrowUp, ArrowDown, Plus, CheckCircle2, Circle, Sparkles, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,8 @@ import { Textarea, Label, Select } from '@/components/ui/form-elements';
 import { Badge } from '@/components/ui/badge';
 import { Eyebrow } from '@/components/ds/eyebrow';
 import { cn } from '@/lib/utils';
+import { api, ApiError } from '@/lib/api';
+import { toast } from '@/hooks/use-toast';
 
 /**
  * Editable shape of a quiz question used by the Quiz Editor.
@@ -77,6 +79,24 @@ function emptyQuestion(): EditableQuestion {
  * visually but not blocked — the saving page decides what to do.
  */
 export function QuizEditor({ questions, onChange, heading = 'Questions', disabled }: QuizEditorProps) {
+  /**
+   * Per-question loading state for inline AI buttons (Feature #2). Keyed
+   * by `${index}:${action}` so two questions can be assisted in parallel
+   * without their spinners overlapping. We use a plain Set instead of a
+   * useMutation per slot because there are 3 actions × N questions and
+   * managing N×3 mutations would be noisy without buying anything.
+   */
+  const [aiBusy, setAiBusy] = useState<Set<string>>(new Set());
+  const busyKey = (i: number, action: string) => `${i}:${action}`;
+  const isAiBusy = (i: number, action: string) => aiBusy.has(busyKey(i, action));
+  const setBusy = (i: number, action: string, on: boolean) =>
+    setAiBusy((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(busyKey(i, action));
+      else next.delete(busyKey(i, action));
+      return next;
+    });
+
   const updateAt = useCallback(
     (index: number, patch: Partial<EditableQuestion>) => {
       const next = [...questions];
@@ -89,6 +109,64 @@ export function QuizEditor({ questions, onChange, heading = 'Questions', disable
     },
     [questions, onChange],
   );
+
+  /**
+   * Invoke /ai/quiz-assist with the current question's draft and patch
+   * the appropriate field with the AI response. Errors surface as
+   * destructive toasts — the editor stays in the same state so the
+   * teacher can retry or edit by hand.
+   */
+  const runAiAssist = async (qi: number, action: 'improve-question' | 'generate-options' | 'generate-explanation') => {
+    const q = questions[qi];
+    if (!q.question.trim()) {
+      toast({ title: 'Write the question first', variant: 'destructive' });
+      return;
+    }
+    if (action === 'generate-explanation' && q.options.some((o) => !o.trim())) {
+      toast({ title: 'Fill in all options first', description: 'AI needs the options to write the explanation.' });
+      return;
+    }
+    setBusy(qi, action, true);
+    try {
+      const body =
+        action === 'generate-explanation'
+          ? {
+              action,
+              question: q.question,
+              options: q.options,
+              correctIndex: q.correctIndex,
+            }
+          : { action, question: q.question };
+      const res = await api.post<{
+        question?: string;
+        options?: string[];
+        correctIndex?: number;
+        explanation?: string;
+        _demo?: boolean;
+      }>('/ai/quiz-assist', body);
+      if (action === 'improve-question' && res.question) {
+        updateAt(qi, { question: res.question });
+      } else if (action === 'generate-options' && res.options && typeof res.correctIndex === 'number') {
+        // Pad to 4 slots so the UI keeps its quad layout — AI sometimes
+        // returns fewer than 4 distractors.
+        const padded = [...res.options];
+        while (padded.length < 4) padded.push('');
+        updateAt(qi, { options: padded.slice(0, 8), correctIndex: res.correctIndex });
+      } else if (action === 'generate-explanation' && res.explanation) {
+        updateAt(qi, { explanation: res.explanation });
+      } else {
+        toast({ title: 'AI returned an unexpected shape', variant: 'destructive' });
+      }
+      if (res._demo) {
+        toast({ title: 'AI demo mode', description: 'No LLM key configured — placeholder text returned.' });
+      }
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : 'AI call failed';
+      toast({ title: 'AI assist failed', description: msg, variant: 'destructive' });
+    } finally {
+      setBusy(qi, action, false);
+    }
+  };
 
   const removeAt = useCallback(
     (index: number) => {
@@ -198,9 +276,27 @@ export function QuizEditor({ questions, onChange, heading = 'Questions', disable
               </div>
             </div>
 
-            {/* Question text */}
+            {/* Question text + AI improve button */}
             <div className="space-y-1.5">
-              <Label htmlFor={`q-${qi}-text`}>Question</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor={`q-${qi}-text`}>Question</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={disabled || isAiBusy(qi, 'improve-question') || !q.question.trim()}
+                  onClick={() => runAiAssist(qi, 'improve-question')}
+                  title="Let AI rewrite the question more clearly"
+                  className="text-[11px] h-7 px-2"
+                >
+                  {isAiBusy(qi, 'improve-question') ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3 w-3" />
+                  )}
+                  AI improve
+                </Button>
+              </div>
               <Textarea
                 id={`q-${qi}-text`}
                 value={q.question}
@@ -211,9 +307,27 @@ export function QuizEditor({ questions, onChange, heading = 'Questions', disable
               />
             </div>
 
-            {/* Options with radio for correct answer */}
+            {/* Options with radio for correct answer + AI generate button */}
             <div className="space-y-1.5">
-              <Label>Answer options — click the circle to mark the correct one</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>Answer options — click the circle to mark the correct one</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={disabled || isAiBusy(qi, 'generate-options') || !q.question.trim()}
+                  onClick={() => runAiAssist(qi, 'generate-options')}
+                  title="Let AI propose 4 options (correct + 3 distractors)"
+                  className="text-[11px] h-7 px-2"
+                >
+                  {isAiBusy(qi, 'generate-options') ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3 w-3" />
+                  )}
+                  AI suggest options
+                </Button>
+              </div>
               <div className="space-y-1.5">
                 {q.options.map((opt, oi) => {
                   const isCorrect = q.correctIndex === oi;
@@ -313,9 +427,32 @@ export function QuizEditor({ questions, onChange, heading = 'Questions', disable
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor={`q-${qi}-exp`}>
-                Explanation <span className="text-[var(--fg-subtle)] font-normal">(optional)</span>
-              </Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor={`q-${qi}-exp`}>
+                  Explanation <span className="text-[var(--fg-subtle)] font-normal">(optional)</span>
+                </Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={
+                    disabled ||
+                    isAiBusy(qi, 'generate-explanation') ||
+                    !q.question.trim() ||
+                    q.options.some((o) => !o.trim())
+                  }
+                  onClick={() => runAiAssist(qi, 'generate-explanation')}
+                  title="AI writes 2-3 sentences explaining the correct answer"
+                  className="text-[11px] h-7 px-2"
+                >
+                  {isAiBusy(qi, 'generate-explanation') ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3 w-3" />
+                  )}
+                  AI write
+                </Button>
+              </div>
               <Textarea
                 id={`q-${qi}-exp`}
                 value={q.explanation}

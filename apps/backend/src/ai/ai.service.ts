@@ -16,6 +16,8 @@ import {
   StudyCoachDto,
   ClassInsightsDto,
   CodeReviewDto,
+  QuizAssistDto,
+  QuizAssistAction,
 } from './ai.dto';
 
 const QuizSchema = z.object({
@@ -571,6 +573,168 @@ correctIndex is 0-based (0=A, 1=B, 2=C, 3=D). Do not include any text outside th
 
     await this.log(userId, 'generate-quiz', prompt, JSON.stringify(result));
     return result;
+  }
+
+  /**
+   * Feature #2 — inline AI assist inside the Quiz Editor.
+   *
+   * Single endpoint handles three discrete teacher actions; the prompt
+   * template and response schema change per action but the Claude call
+   * and JSON-extraction plumbing are shared so we don't fork the
+   * Anthropic-streaming workaround three times.
+   *
+   *   improve-question     → polish wording of an existing question
+   *   generate-options     → produce 4 plausible options (correct + 3
+   *                          distractors) for a question that has only
+   *                          text
+   *   generate-explanation → write the after-answer rationale teachers
+   *                          rarely have time to write themselves
+   *
+   * Demo-mode fallbacks are deliberate strings teachers can recognise
+   * as placeholders so a missing LLM key doesn't ship dishonest output.
+   */
+  async quizAssist(dto: QuizAssistDto, userId: string) {
+    const demo = this.demoText(dto.lang);
+    const langInstruction = this.langInstructionFor(dto.lang);
+
+    // Demo-mode short-circuit. Returns a deterministic stub per action
+    // so frontend smoke-tests don't depend on Anthropic availability.
+    if (this.isDemo) {
+      return this.buildAssistDemo(dto);
+    }
+
+    if (dto.action === 'generate-explanation') {
+      // For explanation we want full context (which option is correct)
+      // so the explanation actually justifies the right answer.
+      if (!dto.options || dto.correctIndex === undefined) {
+        throw new BadRequestException(
+          'generate-explanation needs both `options` and `correctIndex` so we can explain WHY the chosen answer is correct.',
+        );
+      }
+      if (dto.correctIndex >= dto.options.length) {
+        throw new BadRequestException('correctIndex out of range for the provided options array.');
+      }
+    }
+
+    const prompt = this.buildAssistPrompt(dto, langInstruction);
+
+    let response;
+    try {
+      const stream = this.client!.messages.stream({
+        model: 'claude-sonnet-4-6',
+        // Single-question payloads are small; 2k tokens is plenty even
+        // for a verbose explanation.
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      response = await stream.finalMessage();
+    } catch (e) {
+      if (this.flagInvalidIfAuthError(e)) return this.buildAssistDemo(dto);
+      throw e;
+    }
+
+    const textBlock = response.content.find((b) => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') throw new InternalServerErrorException('No response from AI');
+
+    const rawText = (textBlock.text as string)
+      .replace(/```(?:json)?\s*/gi, '')
+      .replace(/```$/g, '')
+      .trim();
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      this.logger.error(`quizAssist JSON parse failed (action=${dto.action}). Raw: ${rawText.slice(0, 800)}`);
+      throw new InternalServerErrorException('AI returned malformed JSON — please try again.');
+    }
+
+    // Light validation per action — strip unexpected keys so the
+    // frontend can rely on a stable shape.
+    const result = this.shapeAssistResult(dto.action, parsed);
+    await this.log(userId, `quiz-assist:${dto.action}`, prompt, JSON.stringify(result));
+    return result;
+  }
+
+  /** Per-action prompt builder. */
+  private buildAssistPrompt(dto: QuizAssistDto, langInstruction: string): string {
+    if (dto.action === 'improve-question') {
+      return `${langInstruction}Improve this multiple-choice quiz question. Make it clearer, more specific, and pedagogically sound. Keep the same intent and difficulty level — do NOT make it harder or easier.
+
+Current question: "${dto.question}"
+
+Return ONLY valid JSON in this exact shape:
+{"question": "the improved question text here"}
+
+No prose, no fences, no commentary.`;
+    }
+    if (dto.action === 'generate-options') {
+      return `${langInstruction}Generate 4 multiple-choice answer options for this quiz question. Index 0 must be the correct answer. Indexes 1-3 are plausible distractors that someone with a partial misunderstanding could pick — not silly throwaways.
+
+Question: "${dto.question}"
+
+Return ONLY valid JSON:
+{"options": ["correct answer", "distractor 1", "distractor 2", "distractor 3"], "correctIndex": 0}
+
+correctIndex MUST be 0. No prose, no fences.`;
+    }
+    // generate-explanation
+    const opts = dto.options!.map((o, i) => `${i === dto.correctIndex ? '[CORRECT] ' : ''}${o}`).join('; ');
+    return `${langInstruction}Write a 2-3 sentence explanation for why the marked-correct answer is right. This will be shown to students immediately after they answer. Be specific — reference the underlying concept, not just "because it is".
+
+Question: "${dto.question}"
+Options: ${opts}
+
+Return ONLY valid JSON:
+{"explanation": "your explanation here"}
+
+No prose, no fences.`;
+  }
+
+  private langInstructionFor(lang?: string): string {
+    const l = this.resolveLang(lang);
+    if (l === 'ru') return 'Respond in Russian. ';
+    if (l === 'kz') return 'Respond in Kazakh. ';
+    return '';
+  }
+
+  /** Demo-mode placeholders, marked so teachers know AI isn't configured. */
+  private buildAssistDemo(dto: QuizAssistDto) {
+    if (dto.action === 'improve-question') {
+      return { _demo: true, question: `[demo] ${dto.question.trim().replace(/\?$/, '')} — clearer version?` };
+    }
+    if (dto.action === 'generate-options') {
+      return {
+        _demo: true,
+        options: ['[demo] correct answer', '[demo] distractor 1', '[demo] distractor 2', '[demo] distractor 3'],
+        correctIndex: 0,
+      };
+    }
+    return { _demo: true, explanation: `[demo] This is the correct answer because the LLM key is not configured.` };
+  }
+
+  /** Trim parsed AI response to the action's contract. */
+  private shapeAssistResult(action: QuizAssistAction, parsed: any) {
+    if (action === 'improve-question') {
+      const question = String(parsed?.question ?? '').trim();
+      if (!question) throw new InternalServerErrorException('AI did not return an improved question.');
+      return { question };
+    }
+    if (action === 'generate-options') {
+      const options = Array.isArray(parsed?.options) ? parsed.options.map((o: unknown) => String(o)) : [];
+      if (options.length < 2) throw new InternalServerErrorException('AI did not return enough options.');
+      const correctIndex = typeof parsed?.correctIndex === 'number' ? parsed.correctIndex : 0;
+      if (correctIndex < 0 || correctIndex >= options.length) {
+        return { options, correctIndex: 0 };
+      }
+      return { options, correctIndex };
+    }
+    // generate-explanation
+    const explanation = String(parsed?.explanation ?? '').trim();
+    if (!explanation) throw new InternalServerErrorException('AI did not return an explanation.');
+    return { explanation };
   }
 
   async getCourseSummary(dto: CourseSummaryDto, userId: string) {

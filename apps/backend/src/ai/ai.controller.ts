@@ -26,6 +26,7 @@ import {
   StudyCoachDto,
   ClassInsightsDto,
   CodeReviewDto,
+  QuizAssistDto,
 } from './ai.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
@@ -91,6 +92,29 @@ export class AiController {
    * 25MB upload cap on multer + 200KB cap on returned text — see
    * material-extractor.ts.
    */
+  /**
+   * Feature #2 — inline AI assist inside the Quiz Editor. The editor
+   * fires one of three actions per click; the service picks the right
+   * prompt template and returns a shape that matches the action.
+   *
+   * Teacher/admin only — students don't see the editor at all.
+   */
+  @Post('quiz-assist')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Inline AI assist for the quiz editor (teacher/admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: '{ question } | { options, correctIndex } | { explanation }, plus _demo:true when LLM key absent.',
+  })
+  @ApiResponse({ status: 400, description: 'Missing options/correctIndex when action=generate-explanation' })
+  @ApiResponse({ status: 403, description: 'Students cannot use the editor assist' })
+  quizAssist(@Body() dto: QuizAssistDto, @CurrentUser() user: any) {
+    if (user.role === Role.STUDENT) {
+      throw new ForbiddenException('Only teachers and admins can use editor AI assist');
+    }
+    return this.svc.quizAssist(dto, user.id);
+  }
+
   @Post('extract-text')
   @HttpCode(200)
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))

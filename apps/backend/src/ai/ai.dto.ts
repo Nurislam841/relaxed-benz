@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsInt, Min, Max, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsInt, Min, Max, IsIn, IsArray, ArrayMaxSize } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 const AI_LANGS = ['en', 'ru', 'kz'] as const;
@@ -74,6 +74,52 @@ export class StudyCoachDto {
  */
 export class ClassInsightsDto {
   @ApiProperty() @IsString() @IsNotEmpty() courseId: string;
+  @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
+}
+
+/**
+ * Feature #2 — inline AI assist inside the Quiz Editor.
+ *
+ * One endpoint covers three actions (kept together because they share the
+ * Claude client, lang handling, and demo-mode fallback). Response shape
+ * varies by action — frontend uses TypeScript's discriminated unions to
+ * pick the right field:
+ *   improve-question   → { question }
+ *   generate-options   → { options, correctIndex }
+ *   generate-explanation → { explanation }
+ */
+const QUIZ_ASSIST_ACTIONS = ['improve-question', 'generate-options', 'generate-explanation'] as const;
+export type QuizAssistAction = (typeof QUIZ_ASSIST_ACTIONS)[number];
+
+export class QuizAssistDto {
+  @ApiProperty({ enum: QUIZ_ASSIST_ACTIONS })
+  @IsIn(QUIZ_ASSIST_ACTIONS as unknown as string[])
+  action: QuizAssistAction;
+
+  @ApiProperty({ description: 'Current question text (required for all actions)' })
+  @IsString()
+  @IsNotEmpty()
+  question: string;
+
+  /**
+   * Existing options array. Required for `generate-explanation` so Claude
+   * knows which answer it's explaining. Ignored for the other two actions.
+   */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @IsString({ each: true })
+  options?: string[];
+
+  /** Index of the correct option — required for `generate-explanation`. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(7)
+  correctIndex?: number;
+
   @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
 }
 

@@ -287,6 +287,79 @@ describe('AI endpoints (e2e, demo mode)', () => {
     });
   });
 
+  // ─── /api/ai/quiz-assist (Feature #2 — inline editor AI) ────────────────
+
+  describe('POST /api/ai/quiz-assist', () => {
+    it('improve-question — returns { question } string', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/quiz-assist')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ action: 'improve-question', question: 'What is SQL JOIN?' });
+      expect(res.status).toBe(200);
+      expect(typeof res.body.question).toBe('string');
+      expect(res.body.question.length).toBeGreaterThan(0);
+    });
+
+    it('generate-options — returns options array + correctIndex', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/quiz-assist')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ action: 'generate-options', question: 'What combines rows from two tables?' });
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.options)).toBe(true);
+      expect(res.body.options.length).toBeGreaterThanOrEqual(2);
+      expect(typeof res.body.correctIndex).toBe('number');
+      expect(res.body.correctIndex).toBeGreaterThanOrEqual(0);
+      expect(res.body.correctIndex).toBeLessThan(res.body.options.length);
+    });
+
+    it('generate-explanation — returns { explanation } when options + correctIndex provided', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/quiz-assist')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({
+          action: 'generate-explanation',
+          question: 'What is the capital of France?',
+          options: ['Paris', 'London', 'Berlin', 'Madrid'],
+          correctIndex: 0,
+        });
+      expect(res.status).toBe(200);
+      expect(typeof res.body.explanation).toBe('string');
+      expect(res.body.explanation.length).toBeGreaterThan(0);
+    });
+
+    it('rejects unknown action (400)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/quiz-assist')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ action: 'invent-stuff', question: 'x' });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects empty question (400)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/quiz-assist')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ action: 'improve-question', question: '' });
+      expect(res.status).toBe(400);
+    });
+
+    it('students are blocked (403)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/quiz-assist')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ action: 'improve-question', question: 'x' });
+      expect(res.status).toBe(403);
+    });
+
+    it('requires authentication (401)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/quiz-assist')
+        .send({ action: 'improve-question', question: 'x' });
+      expect(res.status).toBe(401);
+    });
+  });
+
   // ─── /api/ai/extract-text (Feature #1) ────────────────────────────────────
 
   describe('POST /api/ai/extract-text', () => {
