@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   Calendar,
   BookOpen,
-  CalendarDays,
   Bell,
   User as UI,
   Shield,
@@ -23,7 +22,6 @@ import {
   Activity,
   Sparkles,
   Radio,
-  Trophy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMe } from '@/hooks/use-auth';
@@ -36,13 +34,11 @@ const MAIN_GROUP: NavItem[] = [
   { href: '/dashboard', key: 'dashboard', icon: LayoutDashboard },
   { href: '/courses', key: 'courses', icon: BookOpen },
   { href: '/schedule', key: 'schedule', icon: Calendar },
-  { href: '/calendar', key: 'calendar', icon: CalendarDays },
 ];
 
 const SECONDARY_GROUP: NavItem[] = [
   { href: '/ai-analysis', key: 'aiAnalysis', icon: Sparkles },
   { href: '/kahoot/play', key: 'joinLive', icon: Radio },
-  { href: '/achievements', key: 'achievements', icon: Trophy },
   { href: '/search', key: 'search', icon: Search },
   { href: '/notifications', key: 'notifications', icon: Bell },
   { href: '/activity', key: 'activity', icon: Activity },

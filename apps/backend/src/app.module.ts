@@ -23,10 +23,7 @@ import { QuizModule } from './quiz/quiz.module';
 import { KahootModule } from './kahoot/kahoot.module';
 import { PlagiarismModule } from './plagiarism/plagiarism.module';
 import { HealthModule } from './health/health.module';
-import { CalendarExportModule } from './calendar-export/calendar-export.module';
-import { AchievementsModule } from './achievements/achievements.module';
 import { TwoFactorModule } from './two-factor/two-factor.module';
-import { PdfReportsModule } from './pdf-reports/pdf-reports.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { StorageModule } from './storage/storage.module';
 import { ScheduleModule as NestScheduleModule } from '@nestjs/schedule';
@@ -64,10 +61,7 @@ const TEST_MODE = !!process.env.JEST_WORKER_ID;
     KahootModule,
     PlagiarismModule,
     HealthModule,
-    CalendarExportModule,
-    AchievementsModule,
     TwoFactorModule,
-    PdfReportsModule,
   ],
   providers: [
     // Skip rate-limiting entirely under Jest. Per-route @Throttle() decorators

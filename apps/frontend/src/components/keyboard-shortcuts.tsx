@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
  *                           /  → focus search bar (jumps to /search if not on a search-capable page)
  *                           Esc → close any open modal (including the cheatsheet itself)
  *   - Chord nav (g + X):    g d → dashboard, g c → courses, g s → schedule,
- *                           g g → grades, g a → achievements, g k → AI coach
+ *                           g g → grades, g k → AI coach
  *
  * Editable-element guard:
  *   We skip the global handlers when the user is typing in <input>,
@@ -31,7 +31,6 @@ const NAV_SHORTCUTS: { keys: string; path: string; label: string }[] = [
   { keys: 'g c', path: '/courses', label: 'Go to Courses' },
   { keys: 'g s', path: '/schedule', label: 'Go to Schedule' },
   { keys: 'g g', path: '/grades', label: 'Go to Grades' },
-  { keys: 'g a', path: '/achievements', label: 'Go to Achievements' },
   { keys: 'g k', path: '/ai-analysis', label: 'Go to AI Coach' },
   { keys: 'g n', path: '/notifications', label: 'Go to Notifications' },
   { keys: 'g p', path: '/profile', label: 'Go to Profile' },

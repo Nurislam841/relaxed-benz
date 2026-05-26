@@ -19,9 +19,9 @@ import { NotificationsModule } from '../notifications/notifications.module';
  * can inject TelegramService without re-importing.
  *
  * The forwardRef chain is intentional — TelegramUpdatesService needs to call
- * AiService / AssignmentsService / KahootService, and the AssignmentsModule
- * imports AchievementsModule, which already participates in a chain. Wrapping
- * with forwardRef keeps the dependency graph acyclic at module-init time.
+ * AiService / AssignmentsService / KahootService which themselves participate
+ * in dependency chains. Wrapping with forwardRef keeps the graph acyclic at
+ * module-init time.
  */
 @Global()
 @Module({

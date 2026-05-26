@@ -141,7 +141,6 @@ export class NotificationsService {
    *   ASSIGNMENT_DUE     → "📝 Open" (web link) + "✅ Mark read"
    *   GRADE_PUBLISHED    → "📊 View" (web link) + "🤖 Ask AI"
    *   ANNOUNCEMENT       → "🔗 Open" (web link) + group-chat broadcast (Phase 4.2)
-   *   ACHIEVEMENT        → "🏆 View badges" (no callback — celebration only)
    *   SYSTEM / batch     → bare text (no buttons)
    *
    * When a CourseTelegramGroup is bound for an ANNOUNCEMENT's course, the
@@ -216,10 +215,6 @@ export class NotificationsService {
       case NotificationType.ANNOUNCEMENT: {
         if (!absoluteLink) return [];
         return [[{ text: '🔗 Open', url: absoluteLink }]];
-      }
-      case NotificationType.ACHIEVEMENT: {
-        if (!absoluteLink) return [];
-        return [[{ text: '🏆 View badges', url: absoluteLink }]];
       }
       case NotificationType.CLASS_REMINDER: {
         if (!absoluteLink) return [];

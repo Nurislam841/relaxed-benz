@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
-import { AchievementsService } from '../achievements/achievements.service';
 import {
   CreateQuizDto,
   UpdateQuizDto,
@@ -19,15 +18,7 @@ export class QuizService {
   constructor(
     private db: PrismaService,
     private activityLog: ActivityLogService,
-    private achievements: AchievementsService,
   ) {}
-
-  /** Fire-and-forget badge recompute. Never throws. */
-  private tryRecomputeAchievements(userId: string) {
-    this.achievements.recomputeForUser(userId).catch(() => {
-      // silent — badges shouldn't break quiz flow
-    });
-  }
 
   private async ensureEnrolledOrStaff(userId: string, role: Role, courseId: string) {
     if (role === Role.ADMIN) return;
@@ -81,7 +72,6 @@ export class QuizService {
     });
 
     await this.activityLog.log(user.id, 'CREATE', 'Quiz', quiz.id);
-    this.tryRecomputeAchievements(user.id);
     return this.findOne(quiz.id, user);
   }
 
@@ -350,7 +340,6 @@ export class QuizService {
     ]);
 
     await this.activityLog.log(user.id, 'SUBMIT', 'QuizAttempt', attemptId);
-    this.tryRecomputeAchievements(user.id);
 
     return this.db.quizAttempt.findUnique({
       where: { id: attemptId },
@@ -557,7 +546,6 @@ export class QuizService {
         data: { completedAt: new Date() },
       });
       await this.activityLog.log(user.id, 'COMPLETE_ADAPTIVE', 'QuizAttempt', attempt.id);
-      this.tryRecomputeAchievements(user.id);
       return {
         done: true,
         feedback: { isCorrect, pointsEarned, correctIndex: question.correctIndex, explanation: question.explanation },

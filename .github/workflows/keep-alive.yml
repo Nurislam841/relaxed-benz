@@ -1,0 +1,40 @@
+name: Keep Render backend alive
+
+# Render free web services suspend after ~15 minutes with no inbound traffic.
+# That kills the Telegram bot (webhook deliveries time out because the cold
+# start takes 30-50s and Telegram waits only 5s). This workflow pings the
+# backend's /api/health endpoint every 10 minutes so it never spins down.
+#
+# Cost: a ping is ~1 second of runtime; at 144 runs/day this uses ~70
+# minutes/month of GitHub Actions, well under the 2000 min/month free tier.
+#
+# If GitHub Actions cron is delayed (it sometimes is — runs are scheduled on
+# a best-effort basis), the bot might still go to sleep briefly. For a more
+# rock-solid keep-alive, layer a second pinger via cron-job.org or upgrade
+# the Render service to Starter ($7/mo, no sleep).
+
+on:
+  schedule:
+    # Every 10 minutes. Render's idle timer is 15 min, so 10 min keeps us
+    # comfortably under it even with GitHub's occasional ~5 min delay.
+    - cron: '*/10 * * * *'
+  # Allow manual triggering from the Actions tab — useful right after a
+  # deploy when you want to verify the workflow itself works.
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping /api/health
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Curl backend health
+        # --fail makes curl return non-zero on HTTP errors, but we tolerate
+        # the failure (|| true) — a single missed ping is fine; the next
+        # one will succeed. Adding --max-time covers Render cold starts:
+        # if the service was asleep, the first request kicks it back up
+        # and may take up to ~60s to return.
+        run: |
+          curl --fail --silent --show-error --max-time 60 \
+            https://aitu-unilms-backend.onrender.com/api/health \
+            || echo "Ping failed (service may have been spinning up — next run will succeed)"

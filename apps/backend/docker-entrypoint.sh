@@ -33,8 +33,16 @@ npx prisma db push --skip-generate --accept-data-loss
 echo "Generating Prisma Client..."
 npx prisma generate
 
-echo "Running seed (idempotent)..."
-npx ts-node prisma/seed.ts || echo "Seed skipped or already applied"
+echo "Running seed (idempotent — skips when admin user already exists)..."
+# Use Prisma's built-in `db seed` which reads the `prisma.seed` block in
+# package.json. More reliable than calling ts-node directly:
+#  - resolves tsconfig automatically
+#  - works whether or not ts-node is in PATH
+#  - logs the seed script's actual status
+# We still tolerate failure (`|| echo`) so a transient DB hiccup doesn't
+# block boot — the seed is fully idempotent (the script returns early if
+# the admin user already exists).
+npx prisma db seed || echo "Seed skipped or failed (non-fatal, see logs above)"
 
 echo "Starting backend..."
 if [ -f "dist/main.js" ]; then

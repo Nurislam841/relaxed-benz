@@ -12,7 +12,6 @@ import { Role, CourseRole, SubmissionStatus, NotificationType } from '@prisma/cl
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { AchievementsService } from '../achievements/achievements.service';
 import { StorageService } from '../storage/storage.service';
 import { getPagination, toPaginatedResult } from '../common/pagination';
 import { getAssignmentNotificationContent, getGradeNotificationContent } from '../common/user-content';
@@ -24,16 +23,8 @@ export class AssignmentsService {
     private activityLog: ActivityLogService,
     private mail: MailService,
     private notifications: NotificationsService,
-    private achievements: AchievementsService,
     private storage: StorageService,
   ) {}
-
-  /** Fire-and-forget badge recompute. Never throws — badges are non-critical. */
-  private tryRecomputeAchievements(userId: string) {
-    this.achievements.recomputeForUser(userId).catch(() => {
-      // intentionally silent — we don't want a badge eval glitch to break grading
-    });
-  }
 
   async findByCourse(cid: string, page?: number, limit?: number) {
     const pagination = getPagination(page, limit);
@@ -170,7 +161,6 @@ export class AssignmentsService {
         });
 
     await this.activityLog.log(sid, 'SUBMIT', 'Submission', sub.id);
-    this.tryRecomputeAchievements(sid);
     return sub;
   }
 
@@ -295,7 +285,6 @@ export class AssignmentsService {
     }
 
     await this.activityLog.log(sid, 'SUBMIT', 'Submission', sub.id);
-    this.tryRecomputeAchievements(sid);
     return this.db.submission.findUnique({ where: { id: sub.id }, include: { grade: true, attachments: true } });
   }
 
@@ -349,7 +338,6 @@ export class AssignmentsService {
     });
 
     await this.activityLog.log(sid, 'SUBMIT', 'Submission', sub.id);
-    this.tryRecomputeAchievements(sid);
     return this.db.submission.findUnique({
       where: { id: sub.id },
       include: { grade: true, attachments: true, assignment: true },
@@ -397,11 +385,6 @@ export class AssignmentsService {
       dto.feedback,
       sub.student.preferredLang,
     );
-
-    // Student may have just earned "Perfect Score" / "Triple Crown" — recompute.
-    // Grader may have just earned "Active Grader" — recompute separately.
-    this.tryRecomputeAchievements(sub.studentId);
-    this.tryRecomputeAchievements(byId);
 
     return grade;
   }

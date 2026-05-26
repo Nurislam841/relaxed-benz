@@ -5,7 +5,6 @@ import { createHmac } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './auth.dto';
 import { Role } from '@prisma/client';
-import { AchievementsService } from '../achievements/achievements.service';
 import { TwoFactorService } from '../two-factor/two-factor.service';
 
 /**
@@ -25,7 +24,6 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
-    private achievements: AchievementsService,
     private twoFactor: TwoFactorService,
   ) {}
 
@@ -47,8 +45,6 @@ export class AuthService {
       }
     }
 
-    // Grants "First Steps" on first login + refreshes any newly-earned badges
-    this.achievements.recomputeForUser(user.id).catch(() => {});
     return this.issueTokens(user);
   }
 
@@ -125,7 +121,6 @@ export class AuthService {
       // Not linked yet — frontend should prompt the user to link from /profile.
       return { requires_link: true } as const;
     }
-    this.achievements.recomputeForUser(user.id).catch(() => {});
     return this.issueTokens(user);
   }
 

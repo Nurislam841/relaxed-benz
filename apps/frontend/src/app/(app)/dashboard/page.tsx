@@ -47,7 +47,6 @@ import {
   QuickActionCard,
   type HeroStat,
 } from './_components';
-import { GamificationWidget } from '@/components/gamification-widget';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -329,7 +328,6 @@ export default function DashboardPage() {
       : [
           { href: '/courses', label: t.nav.courses, icon: BookOpen, description: t.dashboard.qlStudentCoursesDesc },
           { href: '/schedule', label: t.nav.schedule, icon: Calendar, description: t.dashboard.qlStudentScheduleDesc },
-          { href: '/calendar', label: t.nav.calendar, icon: Calendar, description: t.dashboard.qlCalendarDesc },
           {
             href: '/notifications',
             label: t.nav.notifications,
@@ -561,7 +559,6 @@ export default function DashboardPage() {
                   </div>
                 )}
               </SectionCard>
-              <GamificationWidget />
             </motion.div>
 
             {/* Notifications — 6-col */}

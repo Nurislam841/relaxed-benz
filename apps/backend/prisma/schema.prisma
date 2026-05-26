@@ -35,7 +35,6 @@ enum NotificationType {
   ANNOUNCEMENT
   GRADE_PUBLISHED
   SYSTEM
-  ACHIEVEMENT
   CLASS_REMINDER
   DEADLINE_REMINDER
 }
@@ -89,7 +88,6 @@ model User {
   quizzesCreated      Quiz[]              @relation("QuizCreatedBy")
   quizAttempts        QuizAttempt[]       @relation("QuizAttemptStudent")
   quizSessionsHosted  QuizSession[]       @relation("QuizSessionHost")
-  achievements        UserAchievement[]
 
   @@map("users")
 }
@@ -490,24 +488,6 @@ model QuizSession {
   @@index([quizId])
   @@index([joinCode])
   @@map("quiz_sessions")
-}
-
-// Achievement definitions are NOT stored in the DB — they live in code
-// (achievements.catalog.ts) so the badge metadata (icon, name, criteria)
-// is version-controlled alongside the criteria evaluator.
-// Only the per-user grants are persisted, with the achievement key as a string.
-model UserAchievement {
-  id              String   @id @default(uuid())
-  userId          String   @map("user_id")
-  achievementKey  String   @map("achievement_key")
-  /// Free-form JSON snapshot that triggered the unlock (e.g. {"score":95,"quizId":"..."} for quiz_perfect)
-  metadata        Json?
-  earnedAt        DateTime @default(now()) @map("earned_at")
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, achievementKey])
-  @@index([userId])
-  @@map("user_achievements")
 }
 
 // ─── Telegram bot integration ────────────────────────────────────────────
