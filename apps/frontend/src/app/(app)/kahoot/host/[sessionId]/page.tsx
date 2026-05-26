@@ -59,43 +59,52 @@ export default function KahootHostPage() {
 
   useEffect(() => {
     if (!sessionId) return;
+    let cancelled = false;
+    let socket: Socket | null = null;
 
-    const socket = createKahootSocket();
-    socketRef.current = socket;
-
-    socket.on('connect_error', (err: Error) => {
-      toast({ title: 'Connection failed', description: err.message, variant: 'destructive' });
-    });
-
-    socket.on('error', (e: { message: string }) => {
-      toast({ title: 'Error', description: e.message, variant: 'destructive' });
-    });
-
-    socket.on('state:lobby', (state: LobbyState) => {
-      setLobby(state);
-      if (state.status === 'LOBBY' && phase === 'connecting') setPhase('lobby');
-    });
-
-    socket.on('state:question', (q: QuestionState) => {
-      setQuestion(q);
-      setPhase('question');
-    });
-
-    socket.on('state:leaderboard', (board: LeaderboardEntry[]) => {
-      setLeaderboard(board);
-    });
-
-    socket.on('state:finished', () => setPhase('finished'));
-
-    socket.emit('join', { sessionId }, (ack: { isHost?: boolean }) => {
-      if (!ack?.isHost) {
-        toast({ title: 'Not the host of this session', variant: 'destructive' });
-        router.push('/dashboard');
+    (async () => {
+      socket = await createKahootSocket();
+      if (cancelled) {
+        socket.disconnect();
+        return;
       }
-    });
+      socketRef.current = socket;
+
+      socket.on('connect_error', (err: Error) => {
+        toast({ title: 'Connection failed', description: err.message, variant: 'destructive' });
+      });
+
+      socket.on('error', (e: { message: string }) => {
+        toast({ title: 'Error', description: e.message, variant: 'destructive' });
+      });
+
+      socket.on('state:lobby', (state: LobbyState) => {
+        setLobby(state);
+        if (state.status === 'LOBBY' && phase === 'connecting') setPhase('lobby');
+      });
+
+      socket.on('state:question', (q: QuestionState) => {
+        setQuestion(q);
+        setPhase('question');
+      });
+
+      socket.on('state:leaderboard', (board: LeaderboardEntry[]) => {
+        setLeaderboard(board);
+      });
+
+      socket.on('state:finished', () => setPhase('finished'));
+
+      socket.emit('join', { sessionId }, (ack: { isHost?: boolean }) => {
+        if (!ack?.isHost) {
+          toast({ title: 'Not the host of this session', variant: 'destructive' });
+          router.push('/dashboard');
+        }
+      });
+    })();
 
     return () => {
-      socket.disconnect();
+      cancelled = true;
+      socket?.disconnect();
       socketRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

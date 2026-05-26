@@ -112,7 +112,7 @@ export default function KahootPlayPage() {
       }
 
       // Now open the socket
-      const socket = createKahootSocket();
+      const socket = await createKahootSocket();
       socketRef.current = socket;
 
       socket.on('connect_error', (err: Error) => {

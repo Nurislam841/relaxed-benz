@@ -76,6 +76,36 @@ export class AuthController {
   }
 
   /**
+   * Hand the access_token cookie back to the JS caller — needed so the
+   * Kahoot WebSocket can carry it in the socket.io `auth` payload instead
+   * of relying on a Cookie header.
+   *
+   * Why this exists: cookies are domain-bound. The login response sets
+   * cookies on `aitu-unilms.vercel.app` (the Vercel proxy origin), but
+   * the WebSocket connects **directly** to `aitu-unilms-backend.onrender.com`
+   * — different domain → browser never sends those cookies on the
+   * upgrade request. SameSite=None alone can't fix this (it controls
+   * cross-*site*, not cross-*domain*).
+   *
+   * The frontend hits `/api/auth/socket-token` through its same-origin
+   * proxy (cookies travel normally), receives the raw JWT in JSON, then
+   * passes it explicitly in `socket.io.auth.token` when opening the WS.
+   *
+   * Auth: requires a valid access_token cookie OR Bearer header
+   * (AuthGuard('jwt') enforces this). We just read the same token the
+   * guard already validated and echo it back — no new minting.
+   */
+  @Get('socket-token')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({ summary: 'Echo the access_token for use in socket.io auth payload' })
+  socketToken(@Req() req: Request) {
+    const token =
+      req.cookies?.['access_token'] ||
+      (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : undefined);
+    return { token };
+  }
+
+  /**
    * Cross-origin auth: when the frontend (Vercel) and backend (Render) live
    * on different eTLD+1 domains, browsers strip the cookie from any request
    * that isn't a same-site top-level navigation. That's fine for `/api/*`
