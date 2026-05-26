@@ -394,5 +394,72 @@ describe('Kahoot (e2e)', () => {
       expect(repAll.body.perPlayer[0].accuracy).toBe(100);
       expect(repAll.body.perPlayer[0].correctCount).toBe(8);
     });
+
+    /**
+     * Generality witness — proves the calculator handles arbitrary N, not
+     * just the 5/8 examples earlier in this block. Same formula, every
+     * row: percent = round((correctCount / N) × 1000) / 10. The user
+     * specifically asked for a "good calculator that works automatically
+     * for any number of questions", so this guards against future
+     * regressions where someone might hard-code a 100-point ceiling.
+     */
+    it.each([
+      { n: 3, correct: 1, expected: 33.3 },
+      { n: 3, correct: 2, expected: 66.7 },
+      { n: 3, correct: 3, expected: 100 },
+      { n: 4, correct: 1, expected: 25 },
+      { n: 7, correct: 5, expected: 71.4 },
+      { n: 10, correct: 7, expected: 70 },
+      { n: 12, correct: 1, expected: 8.3 },
+    ])(
+      '$n-question quiz, $correct correct ⇒ score = $expected (universal formula)',
+      async ({ n, correct, expected }) => {
+        const qres = await request(app.getHttpServer())
+          .post(`/api/courses/${mathCourseId}/quizzes`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            title: `N${n}`,
+            isPublished: true,
+            secondsPerQuestion: 30,
+            questions: Array.from({ length: n }).map((_, i) => ({
+              question: `Q${i + 1}`,
+              options: ['A', 'B', 'C', 'D'],
+              correctIndex: 0,
+              points: 100,
+            })),
+          });
+        const sess = await request(app.getHttpServer())
+          .post('/api/kahoot/sessions')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ quizId: qres.body.id });
+        const sid = sess.body.sessionId;
+        await request(app.getHttpServer())
+          .post(`/api/kahoot/sessions/${sid}/start`)
+          .set('Authorization', `Bearer ${adminToken}`);
+
+        for (let i = 0; i < n; i++) {
+          const cur = await request(app.getHttpServer())
+            .get(`/api/kahoot/sessions/${sid}/current-question`)
+            .set('Authorization', `Bearer ${mathStudentToken}`);
+          // Answer the first `correct` questions right, the rest with a
+          // deliberately wrong pick.
+          const pick = i < correct ? 0 : 1;
+          await request(app.getHttpServer())
+            .post(`/api/kahoot/sessions/${sid}/answer`)
+            .set('Authorization', `Bearer ${mathStudentToken}`)
+            .send({ questionId: cur.body.id, pickedIndex: pick, responseTimeMs: 1500 });
+          await request(app.getHttpServer())
+            .post(`/api/kahoot/sessions/${sid}/next`)
+            .set('Authorization', `Bearer ${adminToken}`);
+        }
+        const rep = await request(app.getHttpServer())
+          .get(`/api/kahoot/sessions/${sid}/report`)
+          .set('Authorization', `Bearer ${adminToken}`);
+        expect(rep.status).toBe(200);
+        expect(rep.body.perPlayer[0].score).toBe(expected);
+        expect(rep.body.perPlayer[0].accuracy).toBe(expected);
+        expect(rep.body.perPlayer[0].correctCount).toBe(correct);
+      },
+    );
   });
 });
