@@ -1,42 +1,47 @@
-# Render Blueprint — one-shot infrastructure-as-code for UniLMS.
+# Render Blueprint — Postgres + NestJS backend.
 #
-# Open https://dashboard.render.com/blueprints, click "New Blueprint", select
-# this repo (branch olzhas/relaxed-benz), and Render will create:
-#   - Postgres database
-#   - Backend web service (Docker)
-#   - Frontend web service (Docker)
+# Frontend deploys to Vercel (https://aitu-unilms.vercel.app), so this
+# Blueprint only owns the long-running NestJS service + database.
 #
-# Most env vars are flagged `sync: false` so Render doesn't try to seed them
-# from the blueprint — you'll paste secrets into the dashboard UI after the
-# Blueprint creates each service.
+# Usage:
+#   1. https://dashboard.render.com → New → Blueprint
+#   2. Connect this repo (branch `main` of the fork in use)
+#   3. Apply
+#   4. After services are created, fill in the `sync: false` env vars
+#      in the backend service's Environment tab:
+#        TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, LLM_API_KEY,
+#        S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY,
+#        S3_PUBLIC_URL, BACKEND_PUBLIC_URL, FRONTEND_URL
 #
-# Heads-up about Free plan: web services SUSPEND after 15 minutes with no
-# inbound traffic. The bot needs to be reachable for Telegram webhooks; the
-# easy fix is a cron-job.org ping to /api/health every 10 minutes (covered
-# in DEPLOY.md). Or upgrade backend to Starter ($7/mo) and it stays awake.
+# Free Postgres has a 90-day lifespan; upgrade to Starter ($7/mo) before
+# expiry or migrate to Neon/Supabase. The free web service sleeps after
+# 15 min of inactivity — the GitHub Actions keep-alive workflow in
+# `.github/workflows/keep-alive.yml` pings /api/health every 10 minutes
+# to keep it warm so the bot stays reachable.
 
 databases:
   - name: aitu-unilms-db
     databaseName: unilms
     user: unilms
-    plan: free # 90-day free Postgres; convert to $7/mo Starter after
-    region: frankfurt # closest to KZ/CIS; change to oregon/singapore if preferred
+    plan: free
+    region: frankfurt # closest to KZ/CIS
 
 services:
-  # ── Backend (NestJS) ─────────────────────────────────────────────────────
   - type: web
     name: aitu-unilms-backend
     runtime: docker
-    plan: free # OK with keep-alive ping; bump to starter for prod
+    plan: free
     region: frankfurt
     rootDir: apps/backend
     dockerfilePath: ./Dockerfile
     dockerContext: ./
     healthCheckPath: /api/health
     autoDeploy: true
-    branch: olzhas/relaxed-benz
+    # `main` so this works for any fork; the active branch in
+    # Nurislam841/relaxed-benz is main and we force-push the live code
+    # there. (See DEPLOY-RENDER.md for the rationale.)
+    branch: main
     envVars:
-      # Render injects $PORT — main.ts now reads it.
       - key: NODE_ENV
         value: production
       - key: JWT_EXPIRATION
@@ -44,33 +49,32 @@ services:
       - key: JWT_REFRESH_EXPIRATION
         value: 7d
       - key: TELEGRAM_MODE
-        value: webhook # polling also works on free + cron — see DEPLOY.md
+        value: webhook
       - key: TELEGRAM_BOT_USERNAME
         value: uni_lms_bot
       - key: STORAGE_MODE
         value: s3
       - key: S3_REGION
         value: auto
-      # DATABASE_URL — linked from the Postgres service above.
       - key: DATABASE_URL
         fromDatabase:
           name: aitu-unilms-db
           property: connectionString
-      # Secrets — paste in Render dashboard after the blueprint creates the service.
+      # Strong randoms — Render generates these once per service.
       - key: JWT_SECRET
-        generateValue: true # Render generates a strong random secret once
+        generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: TELEGRAM_LINK_SECRET
         generateValue: true
-      # Telegram restricts secret_token to [A-Za-z0-9_-] and Render's
-      # `generateValue` produces base64 (includes `+/=` which Telegram rejects
-      # with 400 Bad Request). Mark sync:false so you paste a hex string
-      # manually — `openssl rand -hex 32` or any 32-64 char A-Za-z0-9 value.
+      # Telegram restricts secret_token to [A-Za-z0-9_-]; Render's
+      # generateValue produces base64 (+/= chars) which Telegram rejects
+      # with 400. Paste a hex string manually instead.
       - key: TELEGRAM_WEBHOOK_SECRET
         sync: false
+      # Secrets you paste in the Render dashboard.
       - key: TELEGRAM_BOT_TOKEN
-        sync: false # paste manually
+        sync: false
       - key: LLM_API_KEY
         sync: false
       - key: S3_ENDPOINT
@@ -83,38 +87,10 @@ services:
         sync: false
       - key: S3_PUBLIC_URL
         sync: false
-      # BACKEND_PUBLIC_URL / FRONTEND_URL
-      # Render's `fromService: property: host` returns the **internal** host
-      # (srv-xxxxx) used for service-to-service communication, not the public
-      # *.onrender.com domain. Telegram setWebhook needs the public URL or it
-      # fails with "Failed to resolve host". So we paste manually:
-      #   BACKEND_PUBLIC_URL=https://aitu-unilms-backend.onrender.com
-      #   FRONTEND_URL=https://aitu-unilms-frontend.onrender.com
+      # Public URLs — paste once known:
+      #   BACKEND_PUBLIC_URL = https://aitu-unilms-backend.onrender.com
+      #   FRONTEND_URL       = https://aitu-unilms.vercel.app
       - key: BACKEND_PUBLIC_URL
         sync: false
       - key: FRONTEND_URL
-        sync: false
-
-  # ── Frontend (Next.js) ───────────────────────────────────────────────────
-  - type: web
-    name: aitu-unilms-frontend
-    runtime: docker
-    plan: free
-    region: frankfurt
-    rootDir: apps/frontend
-    dockerfilePath: ./Dockerfile
-    dockerContext: ./
-    autoDeploy: true
-    branch: olzhas/relaxed-benz
-    envVars:
-      - key: NODE_ENV
-        value: production
-      # NEXT_PUBLIC_API_URL has to be a full URL with scheme + /api path.
-      # Render's `fromService` returns just the hostname, no scheme/path, and
-      # there's no way to concatenate in render.yaml. So we set this manually
-      # in the dashboard once the backend is deployed:
-      #   NEXT_PUBLIC_API_URL=https://unilms-backend.onrender.com/api
-      # Next.js bakes NEXT_PUBLIC_* into the bundle at build time — after
-      # pasting this, trigger a manual redeploy of the frontend.
-      - key: NEXT_PUBLIC_API_URL
         sync: false
