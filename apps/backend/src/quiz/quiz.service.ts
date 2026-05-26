@@ -97,8 +97,13 @@ export class QuizService {
       where: { id, deletedAt: null },
       include: {
         createdBy: { select: { id: true, fullName: true } },
-        questions: { orderBy: { position: 'asc' } },
-        _count: { select: { questions: true, attempts: true } },
+        // Filter soft-deleted questions out — they exist in the DB only to
+        // keep historical QuizAttemptAnswer FKs valid for post-session
+        // reports. Treating them as "live" would break the editor (they'd
+        // re-appear after delete) and the player (they'd show up between
+        // gap'd positions).
+        questions: { where: { deletedAt: null }, orderBy: { position: 'asc' } },
+        _count: { select: { questions: { where: { deletedAt: null } }, attempts: true } },
       },
     });
     if (!quiz) throw new NotFoundException();

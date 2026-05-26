@@ -172,4 +172,161 @@ describe('Quiz (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(after.status).toBe(404);
   });
+
+  // ─── Question CRUD endpoints (added with the Kahoot-style flow) ───────
+  // These let teachers tweak individual questions after AI generation
+  // without rebuilding the whole quiz.
+  describe('Question CRUD', () => {
+    let quizId: string;
+    let questionIds: string[] = [];
+
+    beforeAll(async () => {
+      // Create a fresh quiz that wasn't deleted by the test above.
+      const r = await request(app.getHttpServer())
+        .post(`/api/courses/${courseId}/quizzes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          title: 'Question CRUD test',
+          description: '',
+          isPublished: false,
+          secondsPerQuestion: 30,
+          questions: [
+            {
+              question: 'Q1',
+              options: ['A', 'B', 'C', 'D'],
+              correctIndex: 0,
+              explanation: '',
+              points: 100,
+              difficulty: 'EASY',
+            },
+            {
+              question: 'Q2',
+              options: ['A', 'B', 'C', 'D'],
+              correctIndex: 1,
+              explanation: '',
+              points: 100,
+              difficulty: 'MEDIUM',
+            },
+          ],
+        });
+      quizId = r.body.id;
+      questionIds = r.body.questions.map((q: any) => q.id);
+    });
+
+    it('POST /api/quizzes/:id/questions — appends with auto position', async () => {
+      const before = await request(app.getHttpServer())
+        .get(`/api/quizzes/${quizId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      const positionsBefore = before.body.questions.map((q: any) => q.position);
+      const maxPosBefore = Math.max(...positionsBefore);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/quizzes/${quizId}/questions`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          question: 'Q3 freshly added',
+          options: ['A', 'B', 'C'],
+          correctIndex: 2,
+          explanation: 'because',
+          points: 150,
+          difficulty: 'HARD',
+        });
+      expect(res.status).toBe(201);
+      expect(res.body.question).toBe('Q3 freshly added');
+      expect(res.body.position).toBe(maxPosBefore + 1);
+      expect(res.body.correctIndex).toBe(2);
+    });
+
+    it('POST /api/quizzes/:id/questions — rejects correctIndex out of range', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/quizzes/${quizId}/questions`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ question: 'bad', options: ['A', 'B'], correctIndex: 5 });
+      expect(res.status).toBe(400);
+    });
+
+    it('PATCH /api/quiz-questions/:id — updates fields', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/quiz-questions/${questionIds[0]}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ question: 'Q1 (edited)', explanation: 'NEW' });
+      expect(res.status).toBe(200);
+      expect(res.body.question).toBe('Q1 (edited)');
+      expect(res.body.explanation).toBe('NEW');
+    });
+
+    it('PATCH /api/quiz-questions/:id — validates correctIndex against options length', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/quiz-questions/${questionIds[0]}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ correctIndex: 99 }); // options are 4-long
+      expect(res.status).toBe(400);
+    });
+
+    it('DELETE /api/quiz-questions/:id — soft-delete + reindex remaining', async () => {
+      const del = await request(app.getHttpServer())
+        .delete(`/api/quiz-questions/${questionIds[1]}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(del.status).toBe(200);
+      expect(del.body.deleted).toBe(true);
+
+      const after = await request(app.getHttpServer())
+        .get(`/api/quizzes/${quizId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      // After deleting one question, remaining positions should be
+      // contiguous starting at 0 — no gaps.
+      const positions = after.body.questions.map((q: any) => q.position).sort();
+      expect(positions).toEqual(positions.map((_p: number, i: number) => i));
+      // The deleted question shouldn't appear.
+      expect(after.body.questions.find((q: any) => q.id === questionIds[1])).toBeUndefined();
+    });
+
+    it('Student cannot modify questions (403)', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/quiz-questions/${questionIds[0]}`)
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ question: 'evil' });
+      expect(res.status).toBe(403);
+    });
+
+    it('Question CRUD requires auth', async () => {
+      const add = await request(app.getHttpServer()).post(`/api/quizzes/${quizId}/questions`).send({});
+      expect(add.status).toBe(401);
+      const patch = await request(app.getHttpServer()).patch(`/api/quiz-questions/${questionIds[0]}`).send({});
+      expect(patch.status).toBe(401);
+      const del = await request(app.getHttpServer()).delete(`/api/quiz-questions/${questionIds[0]}`);
+      expect(del.status).toBe(401);
+    });
+  });
+
+  // ─── /api/quizzes/:id/broadcast-telegram ──────────────────────────────
+  // Teacher-only endpoint. We can't actually send Telegram polls in CI
+  // (no bot token) but the auth/role contract should still be enforced.
+  describe('Quiz → Telegram broadcast', () => {
+    let bquizId: string;
+    beforeAll(async () => {
+      const r = await request(app.getHttpServer())
+        .post(`/api/courses/${courseId}/quizzes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          title: 'Broadcast spec',
+          isPublished: true,
+          questions: [{ question: 'Q', options: ['A', 'B'], correctIndex: 0 }],
+        });
+      bquizId = r.body.id;
+    });
+
+    it('students cannot broadcast (403)', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/quizzes/${bquizId}/broadcast-telegram`)
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({});
+      expect(res.status).toBe(403);
+    });
+
+    it('endpoint requires auth', async () => {
+      const res = await request(app.getHttpServer()).post(`/api/quizzes/${bquizId}/broadcast-telegram`).send({});
+      expect(res.status).toBe(401);
+    });
+  });
 });
