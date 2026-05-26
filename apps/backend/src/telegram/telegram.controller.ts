@@ -79,23 +79,24 @@ export class TelegramController {
       'Generate linking artifacts: deep link (one-tap) AND a 6-digit code for the fallback /link command (5 min TTL)',
   })
   async linkToken(@CurrentUser() u: any) {
-    // Two parallel linking paths are returned:
+    // Two artifacts: a 6-digit code (the canonical linking path) and a
+    // "open bot" deep link (no `?start=` payload).
     //
-    //  1. `deepLink` — Telegram opens the bot with the code as ?start= payload.
-    //     This is one-tap UX *only when the chat is fresh* — Telegram drops
-    //     the payload silently if the user has already tapped Start before.
+    // Why we no longer pass the code as a deep-link payload: Telegram
+    // *hides* the payload in the chat UI — the user types/sees just
+    // `/start`, while the bot receives `/start 123456` and silently links
+    // them. Users got confused because their first /start unexpectedly
+    // succeeded (auto-link via payload) and a subsequent `/link <code>`
+    // they tried to do manually failed with "code expired" (the code had
+    // already been consumed by the hidden /start).
     //
-    //  2. `code` — the same 6-digit code, displayed prominently in the UI.
-    //     User can paste it into the bot as `/link 123456`. Works for every
-    //     user regardless of their chat history with the bot. This is the
-    //     reliable fallback that we want users to see when one-tap fails.
-    //
-    // Both paths consume the same in-memory token, so whichever fires first
-    // wins and the other becomes a no-op.
+    // New flow: every link goes through the explicit `/link 123456`
+    // command. The deep link only opens the chat; the user pastes the
+    // visible code themselves. No surprises.
     const code = this.tg.generateLinkCode(u.id);
     const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'uni_lms_bot';
     return {
-      deepLink: `https://t.me/${botUsername}?start=${code}`,
+      deepLink: `https://t.me/${botUsername}`,
       code,
       expiresIn: 300,
       botUsername,

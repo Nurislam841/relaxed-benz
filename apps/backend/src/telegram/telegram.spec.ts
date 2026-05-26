@@ -103,14 +103,19 @@ describe('Telegram (e2e)', () => {
   // bullet-proof fallback — it MUST exist in the link-token response and
   // MUST be one-shot.
   describe('Link-token / code flow', () => {
-    it('POST /api/me/telegram/link-token — returns 6-digit code + deepLink even when bot disabled', async () => {
+    it('POST /api/me/telegram/link-token — returns 6-digit code + payloadless deepLink', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/me/telegram/link-token')
         .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
       expect(res.body.code).toMatch(/^\d{6}$/);
-      expect(res.body.deepLink).toContain('?start=');
-      expect(res.body.deepLink).toContain(res.body.code);
+      // Deep link must NOT carry the code as a `?start=` payload. Telegram
+      // hides payloads from the user, so an auto-linking deep link confuses
+      // people — they see "/start" succeed without typing the code, and
+      // their manual /link attempt then fails because the code was already
+      // consumed. The canonical linking path is /link 123456 explicit.
+      expect(res.body.deepLink).not.toContain('?start=');
+      expect(res.body.deepLink).toContain('t.me/');
       expect(res.body.botUsername).toBeTruthy();
       expect(res.body.expiresIn).toBeGreaterThanOrEqual(60);
     });

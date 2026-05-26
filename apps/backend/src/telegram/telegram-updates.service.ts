@@ -197,13 +197,12 @@ export class TelegramUpdatesService implements OnModuleInit {
     const text = ctx.message?.text ?? '';
     const payload = text.split(' ').slice(1).join(' ').trim(); // /start <payload>
 
-    // 6-digit code from the new linking flow (in-memory store in
-    // TelegramService). Works whether the user came via deep link OR
-    // wrote `/start 123456` manually.
-    if (/^\d{6}$/.test(payload)) {
-      await this.linkByCode(ctx, payload);
-      return;
-    }
+    // Numeric payload was historically used to auto-link via deep link, but
+    // Telegram hides the payload in the chat UI — users saw "/start" and
+    // got a "Linked!" reply without understanding why, then their manual
+    // `/link <code>` attempt would fail because the code was already
+    // consumed. Ignore numeric payloads here: the canonical linking path
+    // is now the explicit `/link 123456` command after picking a language.
 
     // Legacy: JWT-based payload `link_<jwt>` from earlier versions. Keep
     // supported in case a stale frontend tab generates one.
