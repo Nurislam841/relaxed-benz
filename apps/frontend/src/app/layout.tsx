@@ -14,6 +14,11 @@ const instrumentSerif = Instrument_Serif({
   style: ['normal', 'italic'],
   variable: '--font-serif',
   display: 'swap',
+  // Next.js 14 doesn't ship font metrics for Instrument Serif and `next build`
+  // bombs with "Failed to find font override values" at build time. Disabling
+  // adjust-font-fallback skips that computation — the font still renders fine
+  // in browsers; we just lose the CLS-optimised system-font fallback layer.
+  adjustFontFallback: false,
 });
 
 // Site-wide metadata. Per-page metadata in (auth)/login etc. extends this.
