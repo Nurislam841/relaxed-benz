@@ -56,6 +56,10 @@ export default function KahootHostPage() {
   const [busy, setBusy] = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
+  // Tracks whether we've already auto-advanced THIS question, so the
+  // timer-expiry effect can't fire `host:next` twice if it rerenders
+  // while the round-trip is in flight. Reset on every new question.
+  const autoAdvancedRef = useRef(false);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -121,6 +125,35 @@ export default function KahootHostPage() {
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
   }, [phase, question]);
+
+  /**
+   * Auto-advance when the timer expires. Old behaviour: host had to
+   * remember to click "Next question" once the 30-second timer hit 0,
+   * causing an awkward dead-air pause every round. Now we fire
+   * `host:next` automatically after a 1-second grace so:
+   *   - late-arriving answers (network latency) still get counted;
+   *   - the room sees "0s — Time's up!" briefly before the next slide.
+   *
+   * Single-fire guard via `autoAdvancedRef`: even if React re-renders
+   * (which re-triggers the effect), we only emit `host:next` once per
+   * question. The ref resets on every new question payload, when the
+   * host manually clicks Next, or on phase changes.
+   */
+  useEffect(() => {
+    // Reset the guard whenever we land on a new question — without this,
+    // a manual Next or auto-advance would block all subsequent rounds.
+    autoAdvancedRef.current = false;
+  }, [question?.id]);
+
+  useEffect(() => {
+    if (phase !== 'question' || !question) return;
+    if (timeLeft > 0 || autoAdvancedRef.current || busy) return;
+    autoAdvancedRef.current = true;
+    const t = setTimeout(() => {
+      socketRef.current?.emit('host:next', { sessionId });
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [timeLeft, phase, question, busy, sessionId]);
 
   const handleStart = () => {
     if (!socketRef.current) return;
