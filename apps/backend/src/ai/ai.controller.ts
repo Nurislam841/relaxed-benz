@@ -27,6 +27,7 @@ import {
   ClassInsightsDto,
   CodeReviewDto,
   QuizAssistDto,
+  KahootInsightsDto,
 } from './ai.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
@@ -113,6 +114,26 @@ export class AiController {
       throw new ForbiddenException('Only teachers and admins can use editor AI assist');
     }
     return this.svc.quizAssist(dto, user.id);
+  }
+
+  /**
+   * Feature #3 — AI insights on a finished Kahoot session report.
+   * Teacher-only (host-or-admin check runs inside the service via
+   * KahootService.getSessionReport).
+   *
+   * Two scopes (request body picks which):
+   *   - 'class'   → 2-paragraph narrative + per-question misconception
+   *                 bullets for whichever questions had accuracy < 50%.
+   *   - 'student' → personal feedback for one student (requires studentId).
+   */
+  @Post('kahoot-insights')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'AI narrative for a finished Kahoot session (host/admin only)' })
+  @ApiResponse({ status: 200, description: 'Class- or student-scoped JSON narrative; _demo:true without LLM key.' })
+  @ApiResponse({ status: 400, description: 'Missing studentId when scope=student' })
+  @ApiResponse({ status: 403, description: 'Caller is not the session host (or admin)' })
+  kahootInsights(@Body() dto: KahootInsightsDto, @CurrentUser() user: any) {
+    return this.svc.kahootInsights(dto, user);
   }
 
   @Post('extract-text')

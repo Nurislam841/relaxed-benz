@@ -287,6 +287,142 @@ describe('AI endpoints (e2e, demo mode)', () => {
     });
   });
 
+  // ─── /api/ai/kahoot-insights (Feature #3) ──────────────────────────────
+
+  describe('POST /api/ai/kahoot-insights', () => {
+    // Build a fresh Kahoot session and run one student answer through it
+    // so the report endpoint returns non-trivial data the AI can analyse.
+    let kahootSessionId: string;
+    let kahootStudentId: string;
+
+    beforeAll(async () => {
+      // Quiz for the kahoot session — re-use existing courseId.
+      const quizRes = await request(app.getHttpServer())
+        .post(`/api/courses/${courseId}/quizzes`)
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({
+          title: 'Insights smoke',
+          isPublished: true,
+          secondsPerQuestion: 30,
+          questions: [
+            { question: 'Sky?', options: ['Blue', 'Red', 'Green', 'Yellow'], correctIndex: 0, points: 100 },
+            { question: '2+2?', options: ['3', '4', '5', '6'], correctIndex: 1, points: 100 },
+          ],
+        });
+      const insightsQuizId = quizRes.body.id;
+
+      // Need a STUDENT enrolled in the course to play.
+      const sEmail = `kah-insights-${Date.now()}@example.com`;
+      const sReg = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email: sEmail, password: 'pw123456', fullName: 'Insights Student', role: 'STUDENT' });
+      kahootStudentId = sReg.body.user.id;
+      const sLogin = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email: sEmail, password: 'pw123456' });
+      const insightsStudentToken = sLogin.body.accessToken;
+
+      // Need a TEACHER who hosts the session — re-use existing teacherToken
+      // but that teacher must be enrolled-as-TEACHER in the course. The AI
+      // beforeAll already enrolled them so the same token works.
+      await request(app.getHttpServer())
+        .post('/api/admin/enrollments')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ userId: kahootStudentId, courseId, roleInCourse: 'STUDENT' });
+
+      const sessRes = await request(app.getHttpServer())
+        .post('/api/kahoot/sessions')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ quizId: insightsQuizId });
+      kahootSessionId = sessRes.body.sessionId;
+
+      await request(app.getHttpServer())
+        .post(`/api/kahoot/sessions/${kahootSessionId}/start`)
+        .set('Authorization', `Bearer ${teacherToken}`);
+
+      // Student answers Q1 correctly, Q2 incorrectly.
+      const q1 = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${kahootSessionId}/current-question`)
+        .set('Authorization', `Bearer ${insightsStudentToken}`);
+      await request(app.getHttpServer())
+        .post(`/api/kahoot/sessions/${kahootSessionId}/answer`)
+        .set('Authorization', `Bearer ${insightsStudentToken}`)
+        .send({ questionId: q1.body.id, pickedIndex: 0, responseTimeMs: 1500 });
+      await request(app.getHttpServer())
+        .post(`/api/kahoot/sessions/${kahootSessionId}/next`)
+        .set('Authorization', `Bearer ${teacherToken}`);
+      const q2 = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${kahootSessionId}/current-question`)
+        .set('Authorization', `Bearer ${insightsStudentToken}`);
+      await request(app.getHttpServer())
+        .post(`/api/kahoot/sessions/${kahootSessionId}/answer`)
+        .set('Authorization', `Bearer ${insightsStudentToken}`)
+        .send({ questionId: q2.body.id, pickedIndex: 0, responseTimeMs: 1500 }); // wrong
+      await request(app.getHttpServer())
+        .post(`/api/kahoot/sessions/${kahootSessionId}/finish`)
+        .set('Authorization', `Bearer ${teacherToken}`);
+    });
+
+    it('class scope returns summary + strongestTopic/weakestTopic + misconceptions', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/kahoot-insights')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ sessionId: kahootSessionId, scope: 'class' });
+      expect(res.status).toBe(200);
+      expect(typeof res.body.summary).toBe('string');
+      expect(typeof res.body.strongestTopic).toBe('string');
+      expect(typeof res.body.weakestTopic).toBe('string');
+      expect(Array.isArray(res.body.misconceptions)).toBe(true);
+    });
+
+    it('student scope returns summary + strengths/gaps/nextStep when studentId set', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/kahoot-insights')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ sessionId: kahootSessionId, scope: 'student', studentId: kahootStudentId });
+      expect(res.status).toBe(200);
+      expect(typeof res.body.summary).toBe('string');
+      expect(Array.isArray(res.body.strengths)).toBe(true);
+      expect(Array.isArray(res.body.gaps)).toBe(true);
+      expect(typeof res.body.nextStep).toBe('string');
+    });
+
+    it('student scope without studentId → 400', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/kahoot-insights')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ sessionId: kahootSessionId, scope: 'student' });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/studentId.*required/i);
+    });
+
+    it('student scope with unknown studentId → 400', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/kahoot-insights')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ sessionId: kahootSessionId, scope: 'student', studentId: 'nonexistent-id' });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/not found/i);
+    });
+
+    it('non-host caller blocked (403) via reused getSessionReport check', async () => {
+      // Use the existing studentToken from outer beforeAll — that student
+      // was never the host of `kahootSessionId`, so ensureHostOrAdmin throws.
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/kahoot-insights')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send({ sessionId: kahootSessionId, scope: 'class' });
+      expect(res.status).toBe(403);
+    });
+
+    it('requires authentication (401)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/kahoot-insights')
+        .send({ sessionId: kahootSessionId, scope: 'class' });
+      expect(res.status).toBe(401);
+    });
+  });
+
   // ─── /api/ai/quiz-assist (Feature #2 — inline editor AI) ────────────────
 
   describe('POST /api/ai/quiz-assist', () => {

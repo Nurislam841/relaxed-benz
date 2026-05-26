@@ -124,6 +124,42 @@ export class QuizAssistDto {
 }
 
 /**
+ * Feature #3 — AI insights on a finished Kahoot session report.
+ *
+ * Two scopes:
+ *   - `class` (default): narrative + per-question misconceptions for
+ *     the whole room. Teacher uses this to plan the next lecture.
+ *   - `student`: specific student's strengths, gaps, and a 2-sentence
+ *     recommendation. Triggered when the teacher clicks a row in the
+ *     leaderboard.
+ *
+ * The endpoint pulls the same report data the host already sees
+ * (per-player + per-question answer trail) so we don't have to ship
+ * the raw data from the frontend — keeps the request body tiny and
+ * the auth surface single (host-or-admin check matches the report
+ * endpoint itself).
+ */
+const KAHOOT_INSIGHT_SCOPES = ['class', 'student'] as const;
+export type KahootInsightScope = (typeof KAHOOT_INSIGHT_SCOPES)[number];
+
+export class KahootInsightsDto {
+  @ApiProperty() @IsString() @IsNotEmpty() sessionId: string;
+
+  @ApiPropertyOptional({ enum: KAHOOT_INSIGHT_SCOPES, default: 'class' })
+  @IsOptional()
+  @IsIn(KAHOOT_INSIGHT_SCOPES as unknown as string[])
+  scope?: KahootInsightScope;
+
+  /** Required when scope='student' — which player to analyse. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  studentId?: string;
+
+  @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
+}
+
+/**
  * AI code review on a submission.
  *
  * The service pulls `submission.contentText` (and recognises a `language` hint

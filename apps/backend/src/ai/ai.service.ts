@@ -18,7 +18,10 @@ import {
   CodeReviewDto,
   QuizAssistDto,
   QuizAssistAction,
+  KahootInsightsDto,
 } from './ai.dto';
+import { KahootService } from '../kahoot/kahoot.service';
+import { Inject, forwardRef } from '@nestjs/common';
 
 const QuizSchema = z.object({
   questions: z.array(
@@ -232,7 +235,11 @@ export class AiService {
    */
   private keyInvalid = false;
 
-  constructor(private db: PrismaService) {
+  constructor(
+    private db: PrismaService,
+    @Inject(forwardRef(() => KahootService))
+    private kahootSvc: KahootService,
+  ) {
     const apiKey = process.env.LLM_API_KEY || process.env.ANTHROPIC_API_KEY;
     if (apiKey) {
       this.client = new Anthropic({ apiKey });
@@ -735,6 +742,190 @@ No prose, no fences.`;
     const explanation = String(parsed?.explanation ?? '').trim();
     if (!explanation) throw new InternalServerErrorException('AI did not return an explanation.');
     return { explanation };
+  }
+
+  /**
+   * Feature #3 — AI insights on a finished Kahoot session report.
+   *
+   * Reuses KahootService.getSessionReport so auth (host-or-admin) and
+   * data shape are identical to what the report page already trusts.
+   * Two scopes:
+   *
+   *   - class: 2-paragraph narrative about how the room performed +
+   *     per-question "misconception" notes for any question with
+   *     accuracy < 50%.
+   *   - student: 1-paragraph analysis of one player's answers, leading
+   *     with their strongest topics and ending with the gap to focus on.
+   *
+   * Demo-mode shortcuts return clearly-marked placeholder text so the
+   * UI surfaces "AI configured?" status honestly.
+   */
+  async kahootInsights(dto: KahootInsightsDto, user: { id: string; role: string }) {
+    const scope = dto.scope ?? 'class';
+
+    // ensureHostOrAdmin runs inside getSessionReport — 403 propagates
+    // through and the controller doesn't need its own check.
+    const report = await this.kahootSvc.getSessionReport(dto.sessionId, user as any);
+
+    if (scope === 'student' && !dto.studentId) {
+      throw new BadRequestException('studentId is required when scope=student');
+    }
+    const targetPlayer = scope === 'student' ? report.perPlayer.find((p) => p.userId === dto.studentId) : undefined;
+    if (scope === 'student' && !targetPlayer) {
+      throw new BadRequestException('studentId not found in this session');
+    }
+
+    if (this.isDemo) {
+      return this.buildKahootInsightsDemo(scope, report, targetPlayer);
+    }
+
+    const prompt = this.buildKahootInsightsPrompt(scope, report, targetPlayer, dto.lang);
+
+    let response;
+    try {
+      const stream = this.client!.messages.stream({
+        model: 'claude-sonnet-4-6',
+        // A 20-player × 15-question class JSON sits comfortably under
+        // 4k tokens; 8k output ceiling leaves room for a long narrative
+        // with per-question misconception bullets.
+        max_tokens: 8000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      response = await stream.finalMessage();
+    } catch (e) {
+      if (this.flagInvalidIfAuthError(e)) return this.buildKahootInsightsDemo(scope, report, targetPlayer);
+      throw e;
+    }
+
+    const textBlock = response.content.find((b) => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') throw new InternalServerErrorException('No response from AI');
+
+    const rawText = (textBlock.text as string)
+      .replace(/```(?:json)?\s*/gi, '')
+      .replace(/```$/g, '')
+      .trim();
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      this.logger.error(`kahootInsights JSON parse failed (scope=${scope}). Raw: ${rawText.slice(0, 800)}`);
+      throw new InternalServerErrorException('AI returned malformed JSON — please try again.');
+    }
+
+    const shaped = this.shapeKahootInsights(scope, parsed);
+    await this.log(user.id, `kahoot-insights:${scope}`, prompt, JSON.stringify(shaped));
+    return shaped;
+  }
+
+  private buildKahootInsightsPrompt(scope: 'class' | 'student', report: any, targetPlayer: any, lang?: string): string {
+    const langInstr = this.langInstructionFor(lang);
+
+    if (scope === 'class') {
+      const perQ = report.perQuestion.map((q: any) => ({
+        position: q.position + 1,
+        question: q.questionText,
+        accuracy: q.accuracyPercent,
+        correct: q.options[q.correctIndex],
+        distribution: q.options.map((o: string, i: number) => ({ option: o, picked: q.answerDistribution[i] })),
+      }));
+      return `${langInstr}You are a teaching assistant analysing a class quiz session. Write a concise narrative for the teacher about how the room did, then call out per-question misconceptions for any question with <50% accuracy.
+
+Session: "${report.session.quizTitle}"
+Players: ${report.summary.totalPlayers}
+Average score: ${report.summary.averageScore}%
+Per-question data:
+${JSON.stringify(perQ, null, 2)}
+
+Return ONLY valid JSON in this exact shape:
+{
+  "summary": "2-3 sentence overall narrative for the teacher",
+  "strongestTopic": "what the class did best on",
+  "weakestTopic": "what they struggled with most",
+  "misconceptions": [
+    { "questionPosition": 3, "explanation": "Why students likely picked the wrong option, in 1-2 sentences." }
+  ]
+}
+
+Only include questions with accuracy under 50 percent in misconceptions. No prose outside the JSON, no fences.`;
+    }
+
+    // student scope
+    const player = targetPlayer;
+    const answers = player.answers.map((a: any) => ({
+      question: a.questionText,
+      picked: a.pickedIndex,
+      correct: a.correctIndex,
+      isCorrect: a.isCorrect,
+    }));
+    return `${langInstr}You are a teaching assistant writing personal feedback for one student after a class quiz. Lead with what they did well, end with the single most important gap to address.
+
+Quiz: "${report.session.quizTitle}"
+Student: ${player.fullName}
+Score: ${player.score}% (${player.correctCount} / ${report.session.totalQuestions} correct)
+Answers:
+${JSON.stringify(answers, null, 2)}
+
+Return ONLY valid JSON in this exact shape:
+{
+  "summary": "2-3 sentence personal feedback (uses 'you' — speak to the student)",
+  "strengths": ["what they got right and what concept it represents"],
+  "gaps": ["concept they missed (1-2 items max)"],
+  "nextStep": "ONE concrete action they should take next"
+}
+
+No prose outside the JSON, no fences.`;
+  }
+
+  private buildKahootInsightsDemo(scope: 'class' | 'student', report: any, targetPlayer?: any) {
+    if (scope === 'class') {
+      return {
+        _demo: true as const,
+        summary: `[demo] Class of ${report.summary.totalPlayers} averaged ${report.summary.averageScore}%. Real narrative needs an LLM key.`,
+        strongestTopic: '[demo] strongest topic',
+        weakestTopic: '[demo] weakest topic',
+        misconceptions: report.perQuestion
+          .filter((q: any) => q.accuracyPercent < 50)
+          .slice(0, 3)
+          .map((q: any) => ({
+            questionPosition: q.position + 1,
+            explanation: `[demo] Q${q.position + 1} had ${q.accuracyPercent}% accuracy — students may have confused the correct option with a similar one.`,
+          })),
+      };
+    }
+    return {
+      _demo: true as const,
+      summary: `[demo] ${targetPlayer?.fullName ?? 'Student'} scored ${targetPlayer?.score ?? 0}%. Connect an LLM key for real feedback.`,
+      strengths: ['[demo] strength 1'],
+      gaps: ['[demo] gap 1'],
+      nextStep: '[demo] Configure LLM_API_KEY and re-run.',
+    };
+  }
+
+  private shapeKahootInsights(scope: 'class' | 'student', parsed: any) {
+    if (scope === 'class') {
+      return {
+        summary: String(parsed?.summary ?? '').trim(),
+        strongestTopic: String(parsed?.strongestTopic ?? '').trim(),
+        weakestTopic: String(parsed?.weakestTopic ?? '').trim(),
+        misconceptions: Array.isArray(parsed?.misconceptions)
+          ? parsed.misconceptions
+              .filter((m: any) => typeof m?.explanation === 'string')
+              .map((m: any) => ({
+                questionPosition: Number(m.questionPosition) || 0,
+                explanation: String(m.explanation).trim(),
+              }))
+          : [],
+      };
+    }
+    return {
+      summary: String(parsed?.summary ?? '').trim(),
+      strengths: Array.isArray(parsed?.strengths) ? parsed.strengths.map((s: any) => String(s)) : [],
+      gaps: Array.isArray(parsed?.gaps) ? parsed.gaps.map((g: any) => String(g)) : [],
+      nextStep: String(parsed?.nextStep ?? '').trim(),
+    };
   }
 
   async getCourseSummary(dto: CourseSummaryDto, userId: string) {
