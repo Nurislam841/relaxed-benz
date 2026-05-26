@@ -11,6 +11,7 @@ import { GradesService } from '../grades/grades.service';
 import { AssignmentsService } from '../assignments/assignments.service';
 import { KahootService } from '../kahoot/kahoot.service';
 import { getBackendPublicUrl, getFrontendUrl, getUserFacingBaseUrl } from '../common/public-url';
+import { t, normaliseLang, BOT_LANGS, type BotLang } from './bot-i18n';
 
 /**
  * Inbound message router for the bot.
@@ -134,6 +135,68 @@ export class TelegramUpdatesService implements OnModuleInit {
     });
   }
 
+  /**
+   * Pick the right language for replies:
+   *  - Linked user → their `preferredLang` (set via web Profile + bot)
+   *  - Unlinked user → choice they made via /start language picker
+   *  - Otherwise → fall back to Telegram's `from.language_code` (the user's
+   *    Telegram-account locale) so first-contact /start at least lands close
+   *    to their language before they pick explicitly.
+   */
+  private getLang(ctx: Context, linkedUser?: { preferredLang: string | null } | null): BotLang {
+    if (linkedUser?.preferredLang) return normaliseLang(linkedUser.preferredLang);
+    if (ctx.from) {
+      const memLang = this.tg.getUnlinkedLang(ctx.from.id);
+      if (memLang) return normaliseLang(memLang);
+    }
+    return normaliseLang(ctx.from?.language_code ?? 'en');
+  }
+
+  /**
+   * Limit the Telegram chat's compose-menu commands to whichever set is
+   * appropriate for this user. Before linking they should only see /link;
+   * after linking the full command list (minus /link). We use Telegram's
+   * `scope: { type: 'chat', chat_id }` which targets a single chat.
+   *
+   * Failures are logged but never thrown — a stale menu is cosmetic, not
+   * an outage.
+   */
+  private async setChatCommands(chatId: number | string, mode: 'unlinked' | 'linked', lang: BotLang) {
+    const bot = this.tg.bot;
+    if (!bot) return;
+    const cmds =
+      mode === 'unlinked'
+        ? [
+            {
+              command: 'link',
+              description: t('cmdUnlink', lang).replace('/unlink — ', '').slice(0, 50) || 'Connect to UniLMS',
+            },
+            { command: 'help', description: 'Help' },
+          ]
+        : [
+            { command: 'today', description: t('cmdToday', lang).slice(2, 64) },
+            { command: 'schedule', description: t('cmdSchedule', lang).slice(2, 64) },
+            { command: 'grades', description: t('cmdGrades', lang).slice(2, 64) },
+            { command: 'upcoming', description: t('cmdUpcoming', lang).slice(2, 64) },
+            { command: 'ask', description: t('cmdAsk', lang).slice(2, 64) },
+            { command: 'coach', description: t('cmdCoach', lang).slice(2, 64) },
+            { command: 'join', description: t('cmdJoin', lang).slice(2, 64) },
+            { command: 'submit', description: t('cmdSubmit', lang).slice(2, 64) },
+            { command: 'app', description: t('cmdApp', lang).slice(2, 64) },
+            { command: 'help', description: 'Help' },
+            { command: 'unlink', description: t('cmdUnlink', lang).slice(2, 64) },
+          ];
+    // Strip leading "/command — " prefixes if present (we sliced after "/")
+    // to keep descriptions readable; the menu shows the command separately.
+    const cleaned = cmds.map((c) => ({
+      command: c.command,
+      description: c.description.replace(/^[a-z_]+ — /, '').slice(0, 256),
+    }));
+    await bot.api
+      .setMyCommands(cleaned, { scope: { type: 'chat', chat_id: Number(chatId) } })
+      .catch((e) => this.logger.warn(`setMyCommands (chat=${chatId}) failed: ${e?.message ?? e}`));
+  }
+
   // ─── /start [link_<token>] ──────────────────────────────────────────────
 
   private async handleStart(ctx: Context) {
@@ -161,37 +224,64 @@ export class TelegramUpdatesService implements OnModuleInit {
           where: { id: decoded.sub },
           data: { telegramChatId: String(ctx.from.id) },
         });
-        await ctx.reply("✅ UniLMS linked! You'll get notifications here. Try /today, /grades, /ask.");
+        const u = await this.findLinkedUser(ctx);
+        const lang = this.getLang(ctx, u);
+        await this.setChatCommands(ctx.from.id, 'linked', lang);
+        await ctx.reply(t('linkSuccess', lang));
         return;
       } catch (e) {
-        await ctx.reply('❌ This link expired or is invalid. Open the link from your UniLMS Profile page again.');
+        const lang = this.getLang(ctx);
+        await ctx.reply(t('linkBadCode', lang));
         return;
       }
     }
 
-    // Already linked → friendly nudge to /help.
+    // Already linked → friendly welcome back + ensure their full menu is set.
     const linked = await this.findLinkedUser(ctx);
     if (linked) {
-      await ctx.reply(`👋 Welcome back, ${linked.fullName}! Type /help to see what I can do.`);
+      const lang = this.getLang(ctx, linked);
+      await this.setChatCommands(ctx.from.id, 'linked', lang);
+      await ctx.reply(t('welcomeBack', lang, { name: linked.fullName }));
       return;
     }
 
-    // Cold start — point them at the link flow.
-    // Telegram rejects http://localhost URLs in inline buttons (only https
-    // public URLs allowed). In local dev we omit the button and ask the user
-    // to open the LMS manually; in prod the URL is https://… and the button
-    // works.
-    const baseUrl = getFrontendUrl() ?? getBackendPublicUrl();
-    const canUseButton = !!baseUrl && baseUrl.startsWith('https://');
-    const linkButton = canUseButton
-      ? new InlineKeyboard().url('🔗 Open UniLMS Profile', `${baseUrl}/profile`)
-      : undefined;
-    await ctx.reply(
-      canUseButton
-        ? "👋 Hi! I'm the UniLMS bot. To get started, link your account from your UniLMS Profile page — tap the button below."
-        : '👋 Hi! I\'m the UniLMS bot. To get started, open the UniLMS web app, go to your Profile and tap "Connect Telegram in one tap".',
-      linkButton ? { reply_markup: linkButton } : undefined,
-    );
+    // First contact with bot. Show the language picker so all subsequent
+    // prompts (especially the "send /link 123456" instruction) come in
+    // the user's language. We DON'T touch chat commands yet — the picker
+    // is the only visible action, and we lock down the menu to just
+    // /link + /help once they pick a language.
+    const kb = new InlineKeyboard();
+    BOT_LANGS.forEach((l, i) => {
+      kb.text(l.label, `lang:${l.code}`);
+      // Wrap to a new row every 2 buttons so the picker looks balanced.
+      if (i % 2 === 1) kb.row();
+    });
+    const initialLang = this.getLang(ctx);
+    await ctx.reply(t('pickLanguage', initialLang), { reply_markup: kb });
+  }
+
+  /** Inline callback: `lang:en` / `lang:ru` / `lang:kk` */
+  private async handleLanguageCallback(ctx: Context, code: string) {
+    if (!ctx.from) return;
+    const lang = normaliseLang(code);
+    // Persist choice. Linked users → User.preferredLang; otherwise →
+    // unlinkedLangs in-memory until they actually link.
+    const linked = await this.findLinkedUser(ctx);
+    if (linked) {
+      await this.db.user.update({ where: { id: linked.id }, data: { preferredLang: lang } });
+    } else {
+      this.tg.setUnlinkedLang(ctx.from.id, lang);
+    }
+    // Lock the compose menu to just /link + /help until they finish linking
+    // (linked users get the full menu refreshed in their new language).
+    await this.setChatCommands(ctx.from.id, linked ? 'linked' : 'unlinked', lang);
+    await ctx.answerCallbackQuery({ text: t('languageSet', lang).slice(0, 200) }).catch(() => undefined);
+    await ctx.reply(t('languageSet', lang));
+    if (!linked) {
+      await ctx.reply(t('promptCode', lang));
+    } else {
+      await ctx.reply(t('welcomeBack', lang, { name: linked.fullName }));
+    }
   }
 
   // ─── /link <code> — the always-works fallback linking path ──────────────
@@ -204,11 +294,10 @@ export class TelegramUpdatesService implements OnModuleInit {
   // here so the linking succeeds regardless of chat history.
 
   private async handleLink(ctx: Context) {
+    const lang = this.getLang(ctx);
     const code = ctx.message?.text?.split(/\s+/)[1];
     if (!code || !/^\d{6}$/.test(code)) {
-      await ctx.reply(
-        'Usage: /link 123456\n\nOpen your UniLMS Profile → tap "Connect Telegram in one tap" to get a code.',
-      );
+      await ctx.reply(t('linkUsage', lang));
       return;
     }
     await this.linkByCode(ctx, code);
@@ -217,67 +306,79 @@ export class TelegramUpdatesService implements OnModuleInit {
   /** Shared linking helper for `/start <code>` and `/link <code>`. */
   private async linkByCode(ctx: Context, code: string) {
     if (!ctx.from) return;
+    const lang = this.getLang(ctx);
     const userId = this.tg.consumeLinkCode(code);
     if (!userId) {
-      await ctx.reply(
-        '❌ Code not recognised or expired (5-minute TTL). Open your UniLMS Profile and tap "Connect Telegram in one tap" to generate a fresh code.',
-      );
+      await ctx.reply(t('linkBadCode', lang));
       return;
     }
     try {
+      // Promote the user's previously-chosen language (from the /start
+      // picker) into their persistent User.preferredLang. This way all
+      // future replies — including ones from web-app-triggered notifications
+      // — pick up their choice.
+      const memLang = this.tg.getUnlinkedLang(ctx.from.id);
       await this.db.user.update({
         where: { id: userId },
-        data: { telegramChatId: String(ctx.from.id) },
+        data: {
+          telegramChatId: String(ctx.from.id),
+          ...(memLang ? { preferredLang: memLang } : {}),
+        },
       });
-      await ctx.reply("✅ UniLMS linked! You'll get notifications here. Try /today, /grades, /ask.");
+      this.tg.clearUnlinkedLang(ctx.from.id);
+      // Refresh the compose menu to the full command list (minus /link)
+      // so the user sees /today, /grades, etc. as soon as they're linked.
+      const finalLang = normaliseLang(memLang ?? lang);
+      await this.setChatCommands(ctx.from.id, 'linked', finalLang);
+      await ctx.reply(t('linkSuccess', finalLang));
     } catch (e: any) {
-      // Most common cause: the user row was deleted between code generation
-      // and use. Rare but possible — surface a clean error and let them retry.
       this.logger.warn(`linkByCode failed for user ${userId}: ${e?.message ?? e}`);
-      await ctx.reply('❌ Could not link — try generating a new code from your UniLMS Profile.');
+      await ctx.reply(t('linkBadCode', lang));
     }
   }
 
   // ─── /help ──────────────────────────────────────────────────────────────
 
   private async handleHelp(ctx: Context) {
-    // Plain text instead of MarkdownV2 — the docs include angle-brackets and
-    // parentheses (e.g. "/ask <question>", "(AI)") which would need escaping
-    // under MarkdownV2 or Telegram rejects the message with 400 Bad Request.
-    // Keeping it plain is faster to maintain than juggling escapes.
-    await ctx.reply(
-      [
-        'UniLMS bot — commands',
-        '',
-        '— For students —',
-        "/today — today's schedule + due assignments",
-        '/schedule — week ahead',
-        '/grades — latest grades',
-        '/upcoming — assignments due this week',
-        '/ask <question> — ask the AI assistant',
-        '/coach — personal AI study coach',
-        '/join CODE — join a live Kahoot session',
-        '/submit <assignmentId> — submit a photo / PDF',
-        '/app — open full UniLMS inside Telegram',
-        '',
-        '— For teachers —',
-        '/at_risk <courseId> — at-risk students (AI)',
-        '/today_attendance <courseId> — quick stats',
-        '/bind <courseCode> — link this group to a course',
-        '/unbind — unlink group',
-        '',
-        '— Other —',
-        '/link 123456 — connect your UniLMS account (get the code from your Profile)',
-        '/unlink — disconnect this Telegram',
-      ].join('\n'),
-    );
+    // Plain text (no MarkdownV2 escape gotchas with parentheses / dashes).
+    const linked = await this.findLinkedUser(ctx);
+    const lang = this.getLang(ctx, linked);
+    const lines = [
+      t('helpTitle', lang),
+      '',
+      t('helpStudentsHeader', lang),
+      t('cmdToday', lang),
+      t('cmdSchedule', lang),
+      t('cmdGrades', lang),
+      t('cmdUpcoming', lang),
+      t('cmdAsk', lang),
+      t('cmdCoach', lang),
+      t('cmdJoin', lang),
+      t('cmdSubmit', lang),
+      t('cmdApp', lang),
+      '',
+      t('helpTeachersHeader', lang),
+      t('cmdAtRisk', lang),
+      t('cmdAttendance', lang),
+      t('cmdBind', lang),
+      t('cmdUnbind', lang),
+      '',
+      t('helpOtherHeader', lang),
+    ];
+    // Only show /link in help if the user is NOT linked. After linking the
+    // command isn't useful to them and would just look like noise.
+    if (!linked) {
+      lines.push(t('linkUsage', lang).split('\n')[0]); // "Usage: /link 123456"
+    }
+    lines.push(t('cmdUnlink', lang));
+    await ctx.reply(lines.join('\n'));
   }
 
   // ─── /today ─────────────────────────────────────────────────────────────
 
   private async handleToday(ctx: Context) {
     const user = await this.findLinkedUser(ctx);
-    if (!user) return ctx.reply('Please /start to link your account first.');
+    if (!user) return ctx.reply(t('notLinked', this.getLang(ctx)));
     if (!this.schedule) return ctx.reply('Schedule unavailable right now.');
 
     const now = new Date();
@@ -307,7 +408,7 @@ export class TelegramUpdatesService implements OnModuleInit {
 
   private async handleSchedule(ctx: Context) {
     const user = await this.findLinkedUser(ctx);
-    if (!user) return ctx.reply('Please /start to link your account first.');
+    if (!user) return ctx.reply(t('notLinked', this.getLang(ctx)));
     if (!this.schedule) return ctx.reply('Schedule unavailable.');
 
     const now = new Date();
@@ -345,7 +446,7 @@ export class TelegramUpdatesService implements OnModuleInit {
 
   private async handleGrades(ctx: Context) {
     const user = await this.findLinkedUser(ctx);
-    if (!user) return ctx.reply('Please /start to link your account first.');
+    if (!user) return ctx.reply(t('notLinked', this.getLang(ctx)));
     if (!this.grades) return ctx.reply('Grades unavailable.');
 
     const list = await this.grades.getMyGrades(user.id);
@@ -367,7 +468,7 @@ export class TelegramUpdatesService implements OnModuleInit {
 
   private async handleUpcoming(ctx: Context) {
     const user = await this.findLinkedUser(ctx);
-    if (!user) return ctx.reply('Please /start to link your account first.');
+    if (!user) return ctx.reply(t('notLinked', this.getLang(ctx)));
 
     const now = new Date();
     const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -405,7 +506,7 @@ export class TelegramUpdatesService implements OnModuleInit {
 
   private async handleAsk(ctx: Context) {
     const user = await this.findLinkedUser(ctx);
-    if (!user) return ctx.reply('Please /start to link your account first.');
+    if (!user) return ctx.reply(t('notLinked', this.getLang(ctx)));
     if (!this.ai) return ctx.reply('AI unavailable.');
 
     const text = ctx.message?.text ?? '';
@@ -448,7 +549,7 @@ export class TelegramUpdatesService implements OnModuleInit {
 
   private async handleCoach(ctx: Context) {
     const user = await this.findLinkedUser(ctx);
-    if (!user) return ctx.reply('Please /start to link your account first.');
+    if (!user) return ctx.reply(t('notLinked', this.getLang(ctx)));
     if (!this.ai) return ctx.reply('AI unavailable.');
 
     await ctx.reply('🎓 Generating your study coach report — this takes ~10s…');
@@ -479,9 +580,13 @@ export class TelegramUpdatesService implements OnModuleInit {
 
   private async handleUnlink(ctx: Context) {
     const user = await this.findLinkedUser(ctx);
-    if (!user) return ctx.reply('You are not linked.');
+    const lang = this.getLang(ctx, user);
+    if (!user) return ctx.reply(t('unlinkAlready', lang));
     await this.db.user.update({ where: { id: user.id }, data: { telegramChatId: null } });
-    await ctx.reply('🔌 Unlinked. You will no longer receive UniLMS notifications here.');
+    // Reset the compose menu to the "not linked" state so the user only sees
+    // /link + /help going forward — matches the fresh /start UX.
+    if (ctx.from) await this.setChatCommands(ctx.from.id, 'unlinked', lang);
+    await ctx.reply(t('unlinked', lang));
   }
 
   // ─── /app (Phase 4.1 Mini App) ──────────────────────────────────────────
@@ -509,7 +614,7 @@ export class TelegramUpdatesService implements OnModuleInit {
 
   private async handleJoin(ctx: Context) {
     const user = await this.findLinkedUser(ctx);
-    if (!user) return ctx.reply('Please /start to link your account first.');
+    if (!user) return ctx.reply(t('notLinked', this.getLang(ctx)));
     if (!this.kahoot) return ctx.reply('Kahoot unavailable.');
 
     const text = ctx.message?.text ?? '';
@@ -543,7 +648,7 @@ export class TelegramUpdatesService implements OnModuleInit {
 
   private async handleSubmit(ctx: Context) {
     const user = await this.findLinkedUser(ctx);
-    if (!user) return ctx.reply('Please /start to link your account first.');
+    if (!user) return ctx.reply(t('notLinked', this.getLang(ctx)));
     const text = ctx.message?.text ?? '';
     const assignmentId = text.split(' ').slice(1).join(' ').trim();
     if (!assignmentId) {
@@ -686,7 +791,7 @@ export class TelegramUpdatesService implements OnModuleInit {
 
   private async handleAtRisk(ctx: Context) {
     const user = await this.findLinkedUser(ctx);
-    if (!user) return ctx.reply('Please /start to link your account first.');
+    if (!user) return ctx.reply(t('notLinked', this.getLang(ctx)));
     if (user.role !== Role.TEACHER && user.role !== Role.ADMIN) {
       await ctx.reply('Teachers/admins only.');
       return;
@@ -718,7 +823,7 @@ export class TelegramUpdatesService implements OnModuleInit {
 
   private async handleTodayAttendance(ctx: Context) {
     const user = await this.findLinkedUser(ctx);
-    if (!user) return ctx.reply('Please /start to link your account first.');
+    if (!user) return ctx.reply(t('notLinked', this.getLang(ctx)));
     if (user.role !== Role.TEACHER && user.role !== Role.ADMIN) {
       await ctx.reply('Teachers/admins only.');
       return;
@@ -755,6 +860,12 @@ export class TelegramUpdatesService implements OnModuleInit {
   private async handleCallback(ctx: Context) {
     const data = ctx.callbackQuery?.data;
     if (!data) return;
+
+    // lang:<en|ru|kk> — from the /start language picker.
+    if (data.startsWith('lang:')) {
+      await this.handleLanguageCallback(ctx, data.slice('lang:'.length));
+      return;
+    }
 
     // markread:<notificationId> — flips Notification.isRead to true.
     if (data.startsWith('markread:')) {
@@ -877,7 +988,7 @@ export class TelegramUpdatesService implements OnModuleInit {
 
     const user = await this.findLinkedUser(ctx);
     if (!user) {
-      await ctx.reply('Please /start to link your account first.');
+      await ctx.reply(t('notLinked', this.getLang(ctx)));
       return;
     }
     await this.streamAiResponse(ctx, user.id, text);

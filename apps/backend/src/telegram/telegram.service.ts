@@ -143,6 +143,34 @@ export class TelegramService {
     return entry.userId;
   }
 
+  // ─── Per-chat language preferences (for users not yet linked) ────────────
+  //
+  // After /start, the user picks a language via inline-keyboard. They are not
+  // yet linked to a backend User row, so we can't write `preferredLang` —
+  // instead we stash the choice in memory keyed by Telegram chat_id. Once the
+  // user actually links (via /link CODE) the preference gets promoted to
+  // `User.preferredLang` and the in-memory entry is cleared.
+  //
+  // Entries auto-expire after 1 hour to bound memory; users who don't
+  // complete linking within that window just see the language picker again.
+  private unlinkedLangs = new Map<string, { lang: string; expiresAt: number }>();
+
+  setUnlinkedLang(chatId: string | number, lang: string): void {
+    this.unlinkedLangs.set(String(chatId), { lang, expiresAt: Date.now() + 60 * 60 * 1000 });
+    const now = Date.now();
+    for (const [k, v] of this.unlinkedLangs) if (v.expiresAt < now) this.unlinkedLangs.delete(k);
+  }
+
+  getUnlinkedLang(chatId: string | number): string | null {
+    const entry = this.unlinkedLangs.get(String(chatId));
+    if (!entry || entry.expiresAt < Date.now()) return null;
+    return entry.lang;
+  }
+
+  clearUnlinkedLang(chatId: string | number): void {
+    this.unlinkedLangs.delete(String(chatId));
+  }
+
   /**
    * Direct bot access for handler registration ([TelegramUpdatesService])
    * and for unusual flows that need raw `bot.api.*` calls. Returns null when
