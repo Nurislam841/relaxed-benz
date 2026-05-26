@@ -199,4 +199,116 @@ describe('Kahoot (e2e)', () => {
       expect(res.status).toBe(401);
     });
   });
+
+  /**
+   * Scoring math regression — see kahoot.service.answer() and
+   * getSessionReport(). Old behaviour gave a Kahoot-style speed bonus
+   * (100 × speedFactor) and computed per-player accuracy as
+   * correctCount/totalAnswered. Teachers reported the visible numbers
+   * felt arbitrary: "1 correct out of 5" showed 25% accuracy + 98 score
+   * (because the unanswered Q5 was excluded from the denominator and
+   * the answer for Q4 came in fast). The new contract:
+   *
+   *   pointsEarned = isCorrect ? round(100 / totalQuestions) : 0
+   *   accuracy     = round((correctCount / totalQuestions) × 100)
+   *
+   * → 1 correct out of 5 questions ⇒ score=20, accuracy=20%, full stop.
+   */
+  describe('scoring math (flat 100/N, accuracy /totalQuestions)', () => {
+    let mathCourseId: string;
+    let mathQuizId: string;
+    let mathSessionId: string;
+    let mathStudentToken: string;
+
+    beforeAll(async () => {
+      // Fresh course + 5-question quiz so we exercise the divisor.
+      const cres = await request(app.getHttpServer())
+        .post('/api/admin/courses')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ code: `MATH-${Date.now()}`, title: 'Scoring math course', semester: '2025-Spring' });
+      mathCourseId = cres.body.id;
+
+      const sEmail = `math-student-${Date.now()}@example.com`;
+      const sReg = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email: sEmail, password: 'pw123456', fullName: 'Math Student', role: 'STUDENT' });
+      const sId = sReg.body.user.id;
+      const sLogin = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email: sEmail, password: 'pw123456' });
+      mathStudentToken = sLogin.body.accessToken;
+
+      await request(app.getHttpServer())
+        .post('/api/admin/enrollments')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ userId: sId, courseId: mathCourseId, roleInCourse: 'STUDENT' });
+
+      const qres = await request(app.getHttpServer())
+        .post(`/api/courses/${mathCourseId}/quizzes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          title: 'Scoring',
+          isPublished: true,
+          secondsPerQuestion: 30,
+          // points=100 on each question is the LEGACY field; we now derive
+          // per-question points from 100/totalQuestions at answer time.
+          questions: Array.from({ length: 5 }).map((_, i) => ({
+            question: `Q${i + 1}`,
+            options: ['A', 'B', 'C', 'D'],
+            correctIndex: 0,
+            points: 100,
+          })),
+        });
+      mathQuizId = qres.body.id;
+
+      const sess = await request(app.getHttpServer())
+        .post('/api/kahoot/sessions')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ quizId: mathQuizId });
+      mathSessionId = sess.body.sessionId;
+
+      await request(app.getHttpServer())
+        .post(`/api/kahoot/sessions/${mathSessionId}/start`)
+        .set('Authorization', `Bearer ${adminToken}`);
+    });
+
+    it('correct answer earns exactly 20 points on a 5-question quiz (no speed bonus)', async () => {
+      // Q1: answer correctly with a deliberately slow responseTime so the
+      // old speed-bonus formula would've returned <100. New formula: flat
+      // 100/5 = 20.
+      const cur = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${mathSessionId}/current-question`)
+        .set('Authorization', `Bearer ${mathStudentToken}`);
+      expect(cur.status).toBe(200);
+
+      const ans = await request(app.getHttpServer())
+        .post(`/api/kahoot/sessions/${mathSessionId}/answer`)
+        .set('Authorization', `Bearer ${mathStudentToken}`)
+        .send({ questionId: cur.body.id, pickedIndex: 0, responseTimeMs: 25000 });
+      expect(ans.status).toBe(201);
+      expect(ans.body.isCorrect).toBe(true);
+      expect(ans.body.pointsEarned).toBe(20);
+    });
+
+    it('report: 1/5 answered correctly ⇒ score=20, accuracy=20% (not 25%, not 100%)', async () => {
+      // Advance past the remaining 4 questions without answering — they
+      // stay unanswered to mimic the user's smoke scenario.
+      for (let i = 0; i < 5; i++) {
+        await request(app.getHttpServer())
+          .post(`/api/kahoot/sessions/${mathSessionId}/next`)
+          .set('Authorization', `Bearer ${adminToken}`);
+      }
+
+      const rep = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${mathSessionId}/report`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(rep.status).toBe(200);
+      const player = rep.body.perPlayer[0];
+      expect(player).toBeDefined();
+      expect(player.score).toBe(20);
+      expect(player.accuracy).toBe(20);
+      expect(player.correctCount).toBe(1);
+      expect(player.totalAnswered).toBe(1);
+    });
+  });
 });

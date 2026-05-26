@@ -189,9 +189,17 @@ export class KahootService {
     if (existing) throw new BadRequestException('already answered');
 
     const isCorrect = dto.pickedIndex === question.correctIndex;
-    // Speed bonus: faster answers earn more, capped at full points.
-    const speedFactor = Math.max(0.5, 1 - dto.responseTimeMs / (1000 * (session.quiz.secondsPerQuestion * 2)));
-    const pointsEarned = isCorrect ? Math.round(question.points * speedFactor) : 0;
+    // Flat 100 / totalQuestions per correct answer, no speed bonus.
+    // Rationale: students complained that "I got 1 right out of 5" should
+    // mean exactly 20% — not 19% (slow) or 25% (rounding /totalAnswered).
+    // The score in points and the accuracy percent now both equal
+    // (correctCount / totalQuestions) × 100, so the leaderboard and the
+    // per-player accuracy column tell the same story.
+    const totalQuestions = await this.db.quizQuestion.count({
+      where: { quizId: session.quizId, deletedAt: null },
+    });
+    const pointsPerQuestion = totalQuestions > 0 ? Math.round(100 / totalQuestions) : 0;
+    const pointsEarned = isCorrect ? pointsPerQuestion : 0;
 
     await this.db.quizAttemptAnswer.create({
       data: {
@@ -284,16 +292,22 @@ export class KahootService {
     const questionMap = new Map(questions.map((q) => [q.id, q]));
 
     // ── perPlayer ───────────────────────────────────────────────────────
+    const totalQuestions = questions.length;
     const perPlayer = attempts.map((attempt, i) => {
       const totalAnswered = attempt.answers.length;
       const correctCount = attempt.answers.filter((a) => a.isCorrect).length;
-      const accuracy = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
+      // Accuracy denominator is the FULL question count, not just what the
+      // player got around to answering. Unanswered = wrong for grading
+      // purposes — otherwise a player who only answered the 1 question
+      // they knew would show 100% accuracy.
+      const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
       return {
         userId: attempt.student.id,
         fullName: attempt.student.fullName,
         score: attempt.score,
         rank: i + 1,
         accuracy,
+        correctCount,
         totalAnswered,
         completedAt: attempt.completedAt,
         answers: attempt.answers
