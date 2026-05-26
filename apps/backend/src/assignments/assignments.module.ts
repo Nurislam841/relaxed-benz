@@ -5,9 +5,12 @@ import { ActivityLogModule } from '../activity-log/activity-log.module';
 import { MailModule } from '../mail/mail.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
+// Export AssignmentsService so TelegramUpdatesService can call
+// submitWithFiles for the /submit photo flow.
 @Module({
   imports: [ActivityLogModule, MailModule, NotificationsModule],
   controllers: [AssignmentsController],
   providers: [AssignmentsService],
+  exports: [AssignmentsService],
 })
 export class AssignmentsModule {}
