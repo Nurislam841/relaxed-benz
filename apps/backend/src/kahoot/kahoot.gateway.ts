@@ -373,6 +373,25 @@ export class KahootGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.emit('answer:result', result);
     // Public leaderboard refresh
     await this.emitLeaderboard(data.sessionId);
+
+    // Auto-advance signal: if every joined attempt has answered the
+    // current question, broadcast `state:question-complete`. The host
+    // page listens and fires host:next after a short grace, so the
+    // class doesn't sit through the remaining timer when everyone is
+    // already done. The "expected count" is the number of attempts in
+    // this session — anyone who joined the lobby gets an attempt row,
+    // so leavers and AFK players are still part of the denominator
+    // (otherwise a single early answer would jump the round).
+    const [attemptCount, answerCount] = await Promise.all([
+      this.db.quizAttempt.count({ where: { sessionId: data.sessionId } }),
+      this.db.quizAttemptAnswer.count({
+        where: { questionId: data.questionId, attempt: { sessionId: data.sessionId } },
+      }),
+    ]);
+    if (attemptCount > 0 && answerCount >= attemptCount) {
+      this.server.to(this.room(data.sessionId)).emit('state:question-complete', { questionId: data.questionId });
+    }
+
     return result;
   }
 

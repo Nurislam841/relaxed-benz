@@ -98,6 +98,22 @@ export default function KahootHostPage() {
 
       socket.on('state:finished', () => setPhase('finished'));
 
+      /**
+       * All players have answered this question. Backend signals this so
+       * the host doesn't have to sit through the rest of the timer. We
+       * mark the auto-advance ref (same one the timer-expiry effect uses)
+       * and fire host:next after a short grace so the room sees the
+       * 100%-answered moment before the slide flips.
+       */
+      socket.on('state:question-complete', (payload: { questionId: string }) => {
+        // Defensive: ignore stale events for a question we've already left.
+        if (autoAdvancedRef.current) return;
+        autoAdvancedRef.current = true;
+        setTimeout(() => {
+          socketRef.current?.emit('host:next', { sessionId });
+        }, 1200);
+      });
+
       socket.emit('join', { sessionId }, (ack: { isHost?: boolean }) => {
         if (!ack?.isHost) {
           toast({ title: 'Not the host of this session', variant: 'destructive' });

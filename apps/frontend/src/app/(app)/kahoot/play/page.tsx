@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Radio, Loader2, Users, CheckCircle2, XCircle, Trophy } from 'lucide-react';
+import { Radio, Loader2, Users, CheckCircle2, XCircle, Trophy, Volume2, VolumeX } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useMe } from '@/hooks/use-auth';
 import { createKahootSocket } from '@/lib/kahoot-socket';
+import { sounds } from '@/lib/kahoot-sounds';
 import type { Socket } from 'socket.io-client';
 
 interface LobbyState {
@@ -66,6 +67,10 @@ export default function KahootPlayPage() {
   const [lastResult, setLastResult] = useState<{ isCorrect: boolean; pointsEarned: number } | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const [busy, setBusy] = useState(false);
+  // Mute toggle reflected in the top-right of the play view. Persists in
+  // localStorage via sounds.setMuted() so a student who hates the music
+  // doesn't have to mute it every game.
+  const [muted, setMuted] = useState<boolean>(sounds.isMuted());
 
   const socketRef = useRef<Socket | null>(null);
   const questionStartRef = useRef<number>(0);
@@ -82,11 +87,23 @@ export default function KahootPlayPage() {
     return () => clearInterval(id);
   }, [phase, question]);
 
+  /**
+   * Background music while the game is in progress. We only start when a
+   * new question arrives (a real user gesture — the prior "Join" click —
+   * has already unlocked the AudioContext) and stop on reveal/finished
+   * to give the win/lose SFX clear airtime.
+   */
+  useEffect(() => {
+    if (phase === 'question') sounds.startBackground();
+    else sounds.stopBackground();
+  }, [phase]);
+
   // ── Socket lifecycle ──────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       socketRef.current?.disconnect();
       socketRef.current = null;
+      sounds.stopBackground();
     };
   }, []);
 
@@ -151,6 +168,11 @@ export default function KahootPlayPage() {
 
       socket.on('answer:result', (r: { isCorrect: boolean; pointsEarned: number }) => {
         setLastResult(r);
+        // SFX feedback (Feature: game bells). Win = bright C-major
+        // arpeggio, Lose = short descending minor. Muted users hear
+        // nothing — the SFX call is a silent no-op when muted=true.
+        if (r.isCorrect) sounds.playWin();
+        else sounds.playLose();
       });
 
       // Now join the session
@@ -277,14 +299,30 @@ export default function KahootPlayPage() {
           <Eyebrow>
             Question {question.index + 1} of {question.total}
           </Eyebrow>
-          <div
-            className={cn(
-              'font-mono text-2xl font-bold tabular-nums',
-              timeLeft <= 5 ? 'text-rose-600 dark:text-rose-400' : 'text-[var(--fg)]',
-            )}
-            aria-label={`${timeLeft} seconds remaining`}
-          >
-            {timeLeft}s
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                const next = !muted;
+                setMuted(next);
+                sounds.setMuted(next);
+                if (!next && phase === 'question') sounds.startBackground();
+              }}
+              className="rounded-md p-1.5 text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--surface-hover)] transition-colors"
+              title={muted ? 'Unmute sounds' : 'Mute sounds'}
+              aria-label={muted ? 'Unmute' : 'Mute'}
+            >
+              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            </button>
+            <div
+              className={cn(
+                'font-mono text-2xl font-bold tabular-nums',
+                timeLeft <= 5 ? 'text-rose-600 dark:text-rose-400' : 'text-[var(--fg)]',
+              )}
+              aria-label={`${timeLeft} seconds remaining`}
+            >
+              {timeLeft}s
+            </div>
           </div>
         </div>
 

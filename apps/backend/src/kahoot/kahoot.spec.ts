@@ -201,6 +201,46 @@ describe('Kahoot (e2e)', () => {
   });
 
   /**
+   * Auto-advance trigger condition: after a player submits an answer,
+   * the gateway compares attemptCount vs. answerCount for the current
+   * question. When they match, `state:question-complete` is broadcast
+   * over the socket so the host page can fire host:next early instead
+   * of waiting for the timer.
+   *
+   * This spec covers the precondition (the DB invariant the gateway
+   * reads) rather than asserting on the socket emit itself — socket.io
+   * broadcasts aren't easy to intercept through SuperTest without
+   * standing up a full integration harness. The emit code is small and
+   * deterministic; once counts match it fires unconditionally.
+   */
+  describe('auto-advance trigger: all-players-answered count invariant', () => {
+    it('after a single player answers the only question, attemptCount === answerCount', async () => {
+      // Use the existing 1-question session + student that the earlier
+      // tests built up. After the answer-flow test ran, the only attempt
+      // for `sessionId` has exactly one answer logged, so the gateway's
+      // counts MUST match → `state:question-complete` would be emitted.
+      const attempts = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${sessionId}/leaderboard`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      // Leaderboard length == attempts.length, which equals the denominator
+      // the gateway uses. For this single-player session it's 1.
+      expect(attempts.status).toBe(200);
+      expect(attempts.body.length).toBe(1);
+      // The earlier "start → current-question → answer → finish flow"
+      // test wrote exactly one answer for this attempt. That single
+      // answer covers 100% of attempts, which is what triggers the
+      // gateway's emit.
+      const report = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${sessionId}/report`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(report.status).toBe(200);
+      const totalAnswered = report.body.perPlayer[0]?.totalAnswered ?? 0;
+      expect(totalAnswered).toBe(1);
+      // attempts.length (1) === answers (1) → emit condition satisfied.
+    });
+  });
+
+  /**
    * Scoring math regression — see kahoot.service.answer() and
    * getSessionReport(). Old behaviour gave a Kahoot-style speed bonus
    * (100 × speedFactor) and computed per-player accuracy as
