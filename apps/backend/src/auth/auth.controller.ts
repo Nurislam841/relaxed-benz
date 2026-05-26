@@ -75,8 +75,31 @@ export class AuthController {
     return user;
   }
 
+  /**
+   * Cross-origin auth: when the frontend (Vercel) and backend (Render) live
+   * on different eTLD+1 domains, browsers strip the cookie from any request
+   * that isn't a same-site top-level navigation. That's fine for `/api/*`
+   * (Next.js proxies same-origin), but the Kahoot WebSocket connects
+   * **directly** to the backend host — cross-site — so SameSite=Lax silently
+   * drops the cookie and the gateway disconnects with "Authentication
+   * required". The previous symptom: "Host live doesn't work" on prod.
+   *
+   * Set `COOKIE_SAMESITE=none` (and the browser will require `Secure=true`,
+   * which we wire automatically) on Render. Dev defaults to Lax because
+   * `Secure` cookies are refused on http://localhost.
+   */
+  private cookieOpts() {
+    const sameSite = (process.env.COOKIE_SAMESITE as 'lax' | 'strict' | 'none' | undefined) || 'lax';
+    return {
+      httpOnly: true,
+      sameSite,
+      secure: sameSite === 'none',
+    } as const;
+  }
+
   private setCookies(res: Response, access: string, refresh: string) {
-    res.cookie('access_token', access, { httpOnly: true, sameSite: 'lax', maxAge: 15 * 60 * 1000 });
-    res.cookie('refresh_token', refresh, { httpOnly: true, sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 });
+    const base = this.cookieOpts();
+    res.cookie('access_token', access, { ...base, maxAge: 15 * 60 * 1000 });
+    res.cookie('refresh_token', refresh, { ...base, maxAge: 7 * 24 * 60 * 60 * 1000 });
   }
 }
