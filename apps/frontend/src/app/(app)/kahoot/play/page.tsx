@@ -164,6 +164,10 @@ export default function KahootPlayPage() {
 
       socket.on('state:finished', () => {
         setPhase('finished');
+        // Triumphant fanfare when the game ends — same on every player's
+        // screen so the room hears the end together. Background loop is
+        // stopped by the phase-watcher useEffect.
+        sounds.playGameOver();
       });
 
       socket.on('answer:result', (r: { isCorrect: boolean; pointsEarned: number }) => {

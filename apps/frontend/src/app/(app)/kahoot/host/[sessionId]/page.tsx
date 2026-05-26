@@ -10,6 +10,7 @@ import { HDisplay } from '@/components/ds/h-display';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { createKahootSocket } from '@/lib/kahoot-socket';
+import { sounds } from '@/lib/kahoot-sounds';
 import type { Socket } from 'socket.io-client';
 
 interface LobbyState {
@@ -96,7 +97,13 @@ export default function KahootHostPage() {
         setLeaderboard(board);
       });
 
-      socket.on('state:finished', () => setPhase('finished'));
+      socket.on('state:finished', () => {
+        setPhase('finished');
+        // End-of-game fanfare on the host screen too (it's usually the
+        // projector everyone is watching). Stays in sync with player-
+        // side sound because both hear the same socket event.
+        sounds.playGameOver();
+      });
 
       /**
        * All players have answered this question. Backend signals this so
