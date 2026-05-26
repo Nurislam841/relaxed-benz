@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Sparkles, RotateCcw, Trophy, Brain, ArrowRight, Save, Radio, PlayCircle, ArrowLeft } from 'lucide-react';
+import { Sparkles, RotateCcw, Trophy, Brain, ArrowRight, Radio, PlayCircle, ArrowLeft, Plus } from 'lucide-react';
 import { celebrate } from '@/lib/celebrate';
 import { api } from '@/lib/api';
 import { useMe } from '@/hooks/use-auth';
@@ -262,6 +262,29 @@ export default function QuizPage() {
     setSteps([]);
   };
 
+  /**
+   * Manual entry point — alternative to AI generation. Teacher clicks
+   * "+ Create blank quiz" and lands in the editor with one empty question
+   * pre-filled, then fills everything in by hand. From the editor's
+   * perspective there's no difference between AI-generated and manual
+   * quizzes — both go through the same Save / Host-live actions.
+   */
+  const handleCreateBlank = () => {
+    setEditable([
+      {
+        question: '',
+        options: ['', '', '', ''],
+        correctIndex: 0,
+        explanation: '',
+        points: 100,
+        difficulty: 'MEDIUM',
+      },
+    ]);
+    setLoadedFromLibraryId(null);
+    setTopic('Untitled quiz');
+    setMode('editor');
+  };
+
   const score = quiz ? quiz.questions.filter((q, i) => answers[i] === q.correctIndex).length : 0;
   const pct = quiz ? Math.round((score / quiz.questions.length) * 100) : 0;
   const verdict = pct >= 80 ? 'excellent' : pct >= 60 ? 'good' : 'study';
@@ -290,6 +313,27 @@ export default function QuizPage() {
 
         {/* Saved quiz library — visible to everyone; teachers can edit/publish/delete */}
         {mode === 'config' && <QuizLibrary courseId={id} isTeacher={isTeacher} onPlay={handlePlaySaved} />}
+
+        {/* Manual entry shortcut — teacher creates a quiz from scratch
+            without using AI. Lands in the same editor; the rest of the
+            flow (Start to test, Host live) is identical between manual
+            and AI-generated quizzes. */}
+        {isTeacher && mode === 'config' && (
+          <Card padding="md">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="space-y-1">
+                <p className="text-[13px] font-semibold text-[var(--fg)]">Build it yourself</p>
+                <p className="text-[12px] text-[var(--fg-muted)]">
+                  Skip the AI — write questions, options and answers manually.
+                </p>
+              </div>
+              <Button variant="secondary" onClick={handleCreateBlank}>
+                <Plus className="h-3.5 w-3.5" />
+                Create blank quiz
+              </Button>
+            </div>
+          </Card>
+        )}
 
         {/* AI Studio (Generate panel + suggestions) — teachers/admins only.
             Students would get a 403 on /ai/generate-quiz + on
@@ -447,17 +491,17 @@ export default function QuizPage() {
 
   // ── EDITOR MODE — teacher tweaks AI output, then Save or Host live ──
   if (mode === 'editor' && isTeacher) {
-    const busy = saveAsDraft.isPending || saveAndHostLive.isPending;
+    const busy = saveAndHostLive.isPending;
     return (
       <div className="max-w-3xl space-y-5">
         <div className="space-y-2">
-          <Eyebrow>AI Quiz Studio · Editor</Eyebrow>
+          <Eyebrow>Quiz Editor</Eyebrow>
           <HDisplay size="md" as="h1">
-            Review &amp; <em>edit</em> before going live
+            Build your quiz, then <em>start</em> or go <em>live</em>
           </HDisplay>
           <p className="text-[14px] text-[var(--fg-muted)] max-w-[60ch]">
-            Click any field to fix wording, swap the correct answer, reorder, or add/remove questions. When you're
-            happy, save as draft or host live for students.
+            Edit any field, swap the correct answer, reorder, or add/remove questions. <strong>Start</strong> lets you
+            play-test it yourself. <strong>Host live</strong> saves the quiz and opens a Kahoot session for students.
           </p>
         </div>
 
@@ -476,19 +520,25 @@ export default function QuizPage() {
 
         <QuizEditor questions={editable} onChange={setEditable} disabled={busy} />
 
-        {/* Action footer — sticky-ish at the bottom of the editor for easy access */}
+        {/* Action footer — two primary actions per user requirement.
+            'Save as draft' was removed: 'Host live' implicitly persists the
+            quiz before opening a session, so a separate save isn't needed.
+            'Start over' lives as a small ghost link in the left so the
+            teacher can wipe and begin again without searching. */}
         <Card padding="md" className="sticky bottom-4 z-10 shadow-ds-md">
           <div className="flex flex-wrap items-center gap-2 justify-between">
-            <Button variant="ghost" onClick={handleReset} disabled={busy}>
+            <Button variant="ghost" onClick={handleReset} disabled={busy} size="sm">
               <ArrowLeft className="h-3.5 w-3.5" />
               Start over
             </Button>
             <div className="flex flex-wrap items-center gap-2">
               <Button
-                variant="ghost"
+                variant="secondary"
                 onClick={() => {
                   // Refresh `quiz` from current editable state so play mode
-                  // sees the latest edits, then jump to play.
+                  // sees the latest edits, then jump to local play-through
+                  // — purely for the teacher to sanity-check answers, no
+                  // DB write.
                   setQuiz({
                     questions: editable.map((q) => ({
                       question: q.question,
@@ -504,15 +554,11 @@ export default function QuizPage() {
                 disabled={busy || editable.length === 0}
               >
                 <PlayCircle className="h-3.5 w-3.5" />
-                Play to test
-              </Button>
-              <Button variant="secondary" onClick={() => saveAsDraft.mutate()} disabled={busy || editable.length === 0}>
-                <Save className="h-3.5 w-3.5" />
-                {saveAsDraft.isPending ? 'Saving…' : 'Save as draft'}
+                Start (test)
               </Button>
               <Button variant="ai" onClick={() => saveAndHostLive.mutate()} disabled={busy || editable.length === 0}>
                 <Radio className="h-3.5 w-3.5" />
-                {saveAndHostLive.isPending ? 'Starting…' : 'Save & Host live'}
+                {saveAndHostLive.isPending ? 'Starting…' : 'Host live'}
               </Button>
             </div>
           </div>
