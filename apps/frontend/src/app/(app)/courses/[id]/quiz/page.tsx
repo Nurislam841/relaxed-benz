@@ -271,9 +271,17 @@ export default function QuizPage() {
     return (
       <div className="max-w-2xl space-y-7">
         <div className="space-y-3">
-          <Eyebrow>AI Quiz Studio</Eyebrow>
+          <Eyebrow>{isTeacher ? 'AI Quiz Studio' : 'Quizzes'}</Eyebrow>
           <HDisplay size="md" as="h1">
-            Generate a quiz on <em>any</em> topic
+            {isTeacher ? (
+              <>
+                Generate a quiz on <em>any</em> topic
+              </>
+            ) : (
+              <>
+                Practice with <em>your</em> course quizzes
+              </>
+            )}
           </HDisplay>
           <p className="text-[14px] text-[var(--fg-muted)] max-w-[60ch]">
             {isTeacher ? t.courseQuiz.teacherSubtitle : t.courseQuiz.studentSubtitle}
@@ -283,53 +291,58 @@ export default function QuizPage() {
         {/* Saved quiz library — visible to everyone; teachers can edit/publish/delete */}
         {mode === 'config' && <QuizLibrary courseId={id} isTeacher={isTeacher} onPlay={handlePlaySaved} />}
 
-        {mode === 'generating' ? (
-          <GenerationPanel title="Generating quiz" steps={steps} />
-        ) : (
-          <Card padding="lg">
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="topic">{t.courseQuiz.topic}</Label>
-                <Input
-                  id="topic"
-                  placeholder={t.courseQuiz.topicPlaceholder}
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+        {/* AI Studio (Generate panel + suggestions) — teachers/admins only.
+            Students would get a 403 on /ai/generate-quiz + on
+            POST /courses/:id/quizzes anyway; hiding the UI matches the
+            backend ACL and removes the dead-end button. */}
+        {isTeacher &&
+          (mode === 'generating' ? (
+            <GenerationPanel title="Generating quiz" steps={steps} />
+          ) : (
+            <Card padding="lg">
+              <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label>{t.courseQuiz.questions}</Label>
-                  <Select value={count} onChange={(e) => setCount(e.target.value)}>
-                    {[3, 5, 8, 10, 15].map((n) => (
-                      <option key={n} value={String(n)}>
-                        {n} {t.courseQuiz.questionsSuffix}
-                      </option>
-                    ))}
-                  </Select>
+                  <Label htmlFor="topic">{t.courseQuiz.topic}</Label>
+                  <Input
+                    id="topic"
+                    placeholder={t.courseQuiz.topicPlaceholder}
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                  />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>{t.courseQuiz.difficulty}</Label>
-                  <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value as typeof difficulty)}>
-                    <option value="easy">{t.courseQuiz.easy}</option>
-                    <option value="medium">{t.courseQuiz.medium}</option>
-                    <option value="hard">{t.courseQuiz.hard}</option>
-                  </Select>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>{t.courseQuiz.questions}</Label>
+                    <Select value={count} onChange={(e) => setCount(e.target.value)}>
+                      {[3, 5, 8, 10, 15].map((n) => (
+                        <option key={n} value={String(n)}>
+                          {n} {t.courseQuiz.questionsSuffix}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{t.courseQuiz.difficulty}</Label>
+                    <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value as typeof difficulty)}>
+                      <option value="easy">{t.courseQuiz.easy}</option>
+                      <option value="medium">{t.courseQuiz.medium}</option>
+                      <option value="hard">{t.courseQuiz.hard}</option>
+                    </Select>
+                  </div>
                 </div>
+
+                <Button variant="ai" size="lg" className="w-full" onClick={handleGenerate} disabled={!topic.trim()}>
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {t.courseQuiz.generateQuiz}
+                </Button>
               </div>
+            </Card>
+          ))}
 
-              <Button variant="ai" size="lg" className="w-full" onClick={handleGenerate} disabled={!topic.trim()}>
-                <Sparkles className="h-3.5 w-3.5" />
-                {t.courseQuiz.generateQuiz}
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {/* Topic suggestions */}
-        {mode === 'config' && (
+        {/* Topic suggestions — also teachers only (paired with the AI Studio above) */}
+        {isTeacher && mode === 'config' && (
           <div className="space-y-2.5">
             <Eyebrow>Suggested topics</Eyebrow>
             <SuggestionStrip
