@@ -66,6 +66,12 @@ export class TelegramWebhookController implements OnModuleInit, OnModuleDestroy 
         return;
       }
       try {
+        // grammY requires `bot.init()` (or a passed `botInfo`) before
+        // `bot.handleUpdate()` can run. In polling mode `bot.start()` does
+        // this internally — in webhook mode we must call it ourselves, or
+        // every incoming webhook fails with
+        //   "Bot not initialized! Either call `await bot.init()`..."
+        await bot.init();
         const webhookUrl = `${publicUrl}/api/telegram/webhook`;
         await bot.api.setWebhook(webhookUrl, {
           secret_token: secretToken || undefined,
