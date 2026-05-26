@@ -146,6 +146,20 @@ export class TelegramUpdatesService implements OnModuleInit {
   }
 
   /**
+   * Empty the compose-menu for a specific chat. Used at state-0 boundaries
+   * (`/start` before language pick, `/unlink` reset) so the user sees only
+   * the inline buttons we send — no stale commands lingering from a prior
+   * session.
+   */
+  private async clearChatCommands(chatId: number | string) {
+    const bot = this.tg.bot;
+    if (!bot) return;
+    await bot.api
+      .deleteMyCommands({ scope: { type: 'chat', chat_id: Number(chatId) } })
+      .catch((e) => this.logger.warn(`deleteMyCommands (chat=${chatId}) failed: ${e?.message ?? e}`));
+  }
+
+  /**
    * Limit the Telegram chat's compose-menu commands to whichever set is
    * appropriate for this user. Before linking they should only see /link;
    * after linking the full command list (minus /link). We use Telegram's
@@ -237,11 +251,15 @@ export class TelegramUpdatesService implements OnModuleInit {
       return;
     }
 
+    // State 1 (language picker): strict empty compose-menu. If the user
+    // had commands from a prior session (e.g. they /unlinked + /start'ed
+    // again), Telegram would still serve the stale scoped commands. Wipe
+    // them so the user sees only the inline language buttons.
+    await this.clearChatCommands(ctx.from.id);
+
     // First contact with bot. Show the language picker so all subsequent
     // prompts (especially the "send /link 123456" instruction) come in
-    // the user's language. We DON'T touch chat commands yet — the picker
-    // is the only visible action, and we lock down the menu to just
-    // /link + /help once they pick a language.
+    // the user's language.
     const kb = new InlineKeyboard();
     BOT_LANGS.forEach((l, i) => {
       kb.text(l.label, `lang:${l.code}`);
@@ -575,9 +593,14 @@ export class TelegramUpdatesService implements OnModuleInit {
     const lang = this.getLang(ctx, user);
     if (!user) return ctx.reply(t('unlinkAlready', lang));
     await this.db.user.update({ where: { id: user.id }, data: { telegramChatId: null } });
-    // Reset the compose menu to the "not linked" state so the user only sees
-    // /link + /help going forward — matches the fresh /start UX.
-    if (ctx.from) await this.setChatCommands(ctx.from.id, 'unlinked', lang);
+    // Per user request: /unlink should send the user all the way back to
+    // state 0 (empty compose menu, must /start again). Clear the per-chat
+    // commands AND the unlinked-lang memory so the next /start shows the
+    // language picker exactly like first-time use.
+    if (ctx.from) {
+      this.tg.clearUnlinkedLang(ctx.from.id);
+      await this.clearChatCommands(ctx.from.id);
+    }
     await ctx.reply(t('unlinked', lang));
   }
 
