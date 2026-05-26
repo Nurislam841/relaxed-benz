@@ -12,11 +12,20 @@ export class AssignmentFeedbackDto {
 export class GenerateQuizDto {
   @ApiProperty() @IsString() @IsNotEmpty() courseId: string;
   @ApiProperty() @IsString() @IsNotEmpty() topic: string;
-  @ApiPropertyOptional({ default: 5 }) @IsOptional() @IsInt() @Min(1) @Max(20) questionCount?: number;
+  @ApiPropertyOptional({ default: 5 }) @IsOptional() @IsInt() @Min(1) @Max(50) questionCount?: number;
   @ApiPropertyOptional({ enum: ['easy', 'medium', 'hard'], default: 'medium' })
   @IsOptional()
   @IsIn(['easy', 'medium', 'hard'])
   difficulty?: string;
+  /**
+   * Per-difficulty breakdown (Feature #1.5). When the teacher supplies all
+   * three counts, the AI is told to generate exactly that many per tier and
+   * the `difficulty` field is ignored. Sum MUST equal questionCount —
+   * enforced server-side too, so a bad frontend can't slip a mismatch past.
+   */
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Max(50) easyCount?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Max(50) mediumCount?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Max(50) hardCount?: number;
   @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
   /**
    * Optional lecture text extracted from a teacher-uploaded file (PDF/DOCX/TXT

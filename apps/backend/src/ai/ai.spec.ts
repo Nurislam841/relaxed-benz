@@ -189,6 +189,104 @@ describe('AI endpoints (e2e, demo mode)', () => {
     expect(Array.isArray(res.body.questions)).toBe(true);
   });
 
+  /**
+   * Feature #1.5 — per-difficulty breakdown calculator.
+   *
+   * The frontend lets teachers split questionCount across easy/medium/hard
+   * counts. Sum MUST equal questionCount; partial breakdown (only some of
+   * the three) is ambiguous and rejected so the UI can't degrade silently.
+   */
+  describe('per-level breakdown (easy/medium/hard counts)', () => {
+    it('accepts a valid breakdown that sums to questionCount', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/generate-quiz')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({
+          courseId,
+          topic: 'design patterns',
+          questionCount: 10,
+          easyCount: 3,
+          mediumCount: 5,
+          hardCount: 2,
+        });
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.questions)).toBe(true);
+    });
+
+    it('rejects when sum != questionCount (400, message guides correction)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/generate-quiz')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({
+          courseId,
+          topic: 'design patterns',
+          questionCount: 10,
+          easyCount: 3,
+          mediumCount: 5,
+          hardCount: 5, // sum=13, expected 10
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/sum.*questionCount|correct numbers/i);
+    });
+
+    it('rejects partial breakdown (only easy + medium, no hard)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/generate-quiz')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({
+          courseId,
+          topic: 'design patterns',
+          questionCount: 5,
+          easyCount: 2,
+          mediumCount: 3,
+          // hardCount intentionally omitted
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/all three counts|partial/i);
+    });
+
+    it('accepts old single-difficulty flow when no per-level counts are set', async () => {
+      // Backwards compatibility: callers that haven't migrated to the
+      // calculator (e.g. old mobile build) keep using `difficulty`.
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/generate-quiz')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({ courseId, topic: 'x', questionCount: 3, difficulty: 'easy' });
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.questions)).toBe(true);
+    });
+
+    it('rejects negative counts via class-validator (400)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/generate-quiz')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({
+          courseId,
+          topic: 'x',
+          questionCount: 5,
+          easyCount: -1,
+          mediumCount: 4,
+          hardCount: 2,
+        });
+      expect(res.status).toBe(400);
+    });
+
+    it('accepts questionCount above the old 20 cap (raised to 50)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/generate-quiz')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .send({
+          courseId,
+          topic: 'x',
+          questionCount: 30,
+          easyCount: 10,
+          mediumCount: 10,
+          hardCount: 10,
+        });
+      expect(res.status).toBe(200);
+    });
+  });
+
   // ─── /api/ai/extract-text (Feature #1) ────────────────────────────────────
 
   describe('POST /api/ai/extract-text', () => {

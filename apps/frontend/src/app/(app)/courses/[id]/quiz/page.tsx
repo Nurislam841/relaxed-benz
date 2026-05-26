@@ -25,7 +25,7 @@ import type { AiQuiz, QuizQuestion, SavedQuiz } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label, Select } from '@/components/ui/form-elements';
+import { Label } from '@/components/ui/form-elements';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { useLanguage, useT } from '@/lib/i18n';
@@ -76,7 +76,13 @@ export default function QuizPage() {
 
   const [topic, setTopic] = useState('');
   const [count, setCount] = useState('5');
-  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  // Feature #1.5: per-difficulty breakdown calculator. Default split
+  // matches a medium-difficulty 5-question quiz so existing flows keep
+  // working out of the box. Validation: sum(easy+medium+hard) MUST equal
+  // total questionCount, otherwise Generate is disabled.
+  const [easyCount, setEasyCount] = useState('1');
+  const [mediumCount, setMediumCount] = useState('3');
+  const [hardCount, setHardCount] = useState('1');
 
   // Feature #1: uploaded lecture material (PDF / DOCX / TXT) becomes the
   // AI's primary context for question generation. When set, the resulting
@@ -207,6 +213,20 @@ export default function QuizPage() {
     medium: t.courseQuiz.medium,
     hard: t.courseQuiz.hard,
   };
+  // Calculator-derived state for the AI Studio config card AND for the
+  // in-quiz play badge below. Placed up here so both `handleGenerate`
+  // and the render branches see the same source of truth.
+  const totalN = parseInt(count) || 0;
+  const easyN = parseInt(easyCount) || 0;
+  const mediumN = parseInt(mediumCount) || 0;
+  const hardN = parseInt(hardCount) || 0;
+  const sumByLevel = easyN + mediumN + hardN;
+  const calculatorValid = totalN > 0 && sumByLevel === totalN;
+  const calculatorDelta = sumByLevel - totalN; // signed; negative = need more, positive = too many
+  // Dominant tier — what the play badge shows. If easy/medium tie we
+  // prefer medium (matches old default behaviour), hard wins outright.
+  const dominantDifficulty: 'easy' | 'medium' | 'hard' =
+    easyN >= mediumN && easyN >= hardN ? 'easy' : hardN > mediumN ? 'hard' : 'medium';
 
   /**
    * Upload a lecture file (PDF / DOCX / TXT) and stash the extracted text
@@ -260,6 +280,14 @@ export default function QuizPage() {
       toast({ title: t.courseQuiz.enterTopic, variant: 'destructive' });
       return;
     }
+    if (!calculatorValid) {
+      toast({
+        title: 'Введите корректные числа',
+        description: `Сумма по уровням (${sumByLevel}) должна равняться общему количеству вопросов (${totalN}).`,
+        variant: 'destructive',
+      });
+      return;
+    }
     setMode('generating');
     setSteps([
       { status: 'active', label: 'Analyzing course context', detail: `topic="${topic}"` },
@@ -278,11 +306,16 @@ export default function QuizPage() {
       const result = await api.post<AiQuiz>('/ai/generate-quiz', {
         courseId: id,
         topic,
-        questionCount: parseInt(count),
-        difficulty,
+        questionCount: totalN,
+        // Per-level breakdown is the source of truth in the new UX.
+        // Backend will reject if these don't sum to questionCount.
+        easyCount: easyN,
+        mediumCount: mediumN,
+        hardCount: hardN,
+        // Carry a dominant-tier difficulty hint for adaptive-mode storage,
+        // derived from whichever level got the most questions.
+        difficulty: easyN >= mediumN && easyN >= hardN ? 'easy' : hardN > mediumN ? 'hard' : 'medium',
         lang,
-        // When teacher uploaded a lecture, anchor the AI to that text;
-        // otherwise omit and Claude generates from generic knowledge.
         ...(materialText ? { materialText } : {}),
       });
       clearTimeout(t1);
@@ -487,28 +520,98 @@ export default function QuizPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>{t.courseQuiz.questions}</Label>
-                    <Select value={count} onChange={(e) => setCount(e.target.value)}>
-                      {[3, 5, 8, 10, 15].map((n) => (
-                        <option key={n} value={String(n)}>
-                          {n} {t.courseQuiz.questionsSuffix}
-                        </option>
-                      ))}
-                    </Select>
+                {/* Per-level calculator (Feature #1.5). Total count is
+                    a free-form number; below it the teacher splits the
+                    quiz across difficulty tiers. Sum must equal total,
+                    Generate is disabled until it does. */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="total-questions">Total questions</Label>
+                  <Input
+                    id="total-questions"
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={count}
+                    onChange={(e) => setCount(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Difficulty breakdown</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={easyCount}
+                        onChange={(e) => setEasyCount(e.target.value)}
+                        aria-label="Easy count"
+                      />
+                      <p className="text-[11px] text-[var(--fg-muted)] font-mono uppercase tracking-wide">Easy</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={mediumCount}
+                        onChange={(e) => setMediumCount(e.target.value)}
+                        aria-label="Medium count"
+                      />
+                      <p className="text-[11px] text-[var(--fg-muted)] font-mono uppercase tracking-wide">Medium</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={hardCount}
+                        onChange={(e) => setHardCount(e.target.value)}
+                        aria-label="Hard count"
+                      />
+                      <p className="text-[11px] text-[var(--fg-muted)] font-mono uppercase tracking-wide">Hard</p>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>{t.courseQuiz.difficulty}</Label>
-                    <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value as typeof difficulty)}>
-                      <option value="easy">{t.courseQuiz.easy}</option>
-                      <option value="medium">{t.courseQuiz.medium}</option>
-                      <option value="hard">{t.courseQuiz.hard}</option>
-                    </Select>
+
+                  {/* Calculator status — green when sum matches, red with
+                      a delta hint when it doesn't. Mirrors the backend
+                      BadRequest message so the teacher only sees one
+                      framing of the rule. */}
+                  <div
+                    className={cn(
+                      'text-[12px] font-mono px-2 py-1.5 rounded-md',
+                      calculatorValid
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                        : 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+                    )}
+                  >
+                    {calculatorValid ? (
+                      <>
+                        ✓ Sum {sumByLevel} = total {totalN}
+                      </>
+                    ) : (
+                      <>
+                        ⚠️ Sum {sumByLevel} ≠ total {totalN}
+                        {calculatorDelta !== 0 && (
+                          <span>
+                            {' '}
+                            (введите корректные числа:{' '}
+                            {calculatorDelta > 0 ? `-${calculatorDelta}` : `+${-calculatorDelta}`} до совпадения)
+                          </span>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
 
-                <Button variant="ai" size="lg" className="w-full" onClick={handleGenerate} disabled={!topic.trim()}>
+                <Button
+                  variant="ai"
+                  size="lg"
+                  className="w-full"
+                  onClick={handleGenerate}
+                  disabled={!topic.trim() || !calculatorValid}
+                >
                   <Sparkles className="h-3.5 w-3.5" />
                   {t.courseQuiz.generateQuiz}
                 </Button>
@@ -718,7 +821,7 @@ export default function QuizPage() {
           </div>
         </div>
         <Badge tone="accent" variant="soft">
-          {difficultyLabel[difficulty]}
+          {difficultyLabel[dominantDifficulty]}
         </Badge>
       </div>
 

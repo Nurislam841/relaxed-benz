@@ -1,4 +1,10 @@
-import { Injectable, Logger, InternalServerErrorException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  InternalServerErrorException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
@@ -387,6 +393,28 @@ Be encouraging and constructive. Format as JSON: { "assessment": "...", "strengt
     const count = dto.questionCount ?? 5;
     const difficulty = dto.difficulty ?? 'medium';
 
+    // Per-level breakdown (Feature #1.5). If the teacher provided ANY of the
+    // three counts, require ALL three and enforce sum=questionCount. This
+    // mirrors the frontend "calculator" UX — the bad-data UI message is
+    // identical to the server-side BadRequest so misuse is caught either side.
+    const perLevelProvided =
+      dto.easyCount !== undefined || dto.mediumCount !== undefined || dto.hardCount !== undefined;
+    const easyN = dto.easyCount ?? 0;
+    const mediumN = dto.mediumCount ?? 0;
+    const hardN = dto.hardCount ?? 0;
+    if (perLevelProvided) {
+      if (dto.easyCount === undefined || dto.mediumCount === undefined || dto.hardCount === undefined) {
+        throw new BadRequestException(
+          'Provide all three counts (easyCount, mediumCount, hardCount) or none — partial breakdown is ambiguous.',
+        );
+      }
+      if (easyN + mediumN + hardN !== count) {
+        throw new BadRequestException(
+          `Per-level counts must sum to questionCount: got ${easyN}+${mediumN}+${hardN}=${easyN + mediumN + hardN}, expected ${count}. Please enter correct numbers.`,
+        );
+      }
+    }
+
     const course = await this.db.course.findUnique({ where: { id: dto.courseId } });
     const courseName = course?.title ?? 'the course';
 
@@ -408,12 +436,14 @@ Be encouraging and constructive. Format as JSON: { "assessment": "...", "strengt
     };
     if (this.isDemo) return buildDemoQuiz();
 
-    // Ask Claude to distribute questions across difficulty tiers when the
-    // student picks "medium" — adaptive mode needs questions at every level
-    // to function. When the student explicitly picks easy/hard, stick to
-    // that tier with a small split into the adjacent tier for variety.
-    const difficultyHint =
-      difficulty === 'easy'
+    // Difficulty-distribution prompt. Two modes:
+    //   1. Per-level (Feature #1.5) — teacher specified exact counts, AI gets
+    //      a strict "exactly N EASY, M MEDIUM, K HARD" instruction.
+    //   2. Single difficulty (legacy) — soft percentage hint that lets the
+    //      AI bias toward the chosen tier but stay varied for adaptive mode.
+    const difficultyHint = perLevelProvided
+      ? `Generate exactly ${easyN} EASY, ${mediumN} MEDIUM, and ${hardN} HARD questions. The total must be ${count}.`
+      : difficulty === 'easy'
         ? 'Distribute as EASY=70%, MEDIUM=30%.'
         : difficulty === 'hard'
           ? 'Distribute as HARD=70%, MEDIUM=30%.'
