@@ -94,23 +94,16 @@ export class TelegramUpdatesService implements OnModuleInit {
     // Lowest priority — runs only if no command above matched.
     bot.on('message:text', (ctx) => this.handleAmbientText(ctx));
 
-    // Register the slash menu so users see it in Telegram's compose box.
-    await bot.api
-      .setMyCommands([
-        { command: 'today', description: "Today's schedule + due assignments" },
-        { command: 'schedule', description: 'My schedule for the week' },
-        { command: 'grades', description: 'My latest grades' },
-        { command: 'upcoming', description: 'Assignments due this week' },
-        { command: 'ask', description: 'Ask the AI assistant a question' },
-        { command: 'coach', description: 'Personal AI study coach' },
-        { command: 'app', description: 'Open UniLMS inside Telegram' },
-        { command: 'join', description: 'Join a live Kahoot session — /join CODE' },
-        { command: 'submit', description: 'Submit an assignment — /submit <id> then send photo' },
-        { command: 'link', description: 'Connect your UniLMS account — /link 123456' },
-        { command: 'help', description: 'How to use the bot' },
-        { command: 'unlink', description: 'Disconnect this Telegram from UniLMS' },
-      ])
-      .catch((e) => this.logger.warn(`setMyCommands failed: ${e}`));
+    // Clear the global default command menu. We use per-chat scopes
+    // (setChatCommands below) to drive the UX:
+    //   - Brand-new chat → no commands → Telegram shows only the big "Start"
+    //     button. Cleanest first-impression.
+    //   - After /start + language pick → scoped to {help, link}.
+    //   - After successful /link → scoped to the full feature set.
+    // Without this delete, the global menu wins for fresh users and they see
+    // every command available even before linking, which is what the user
+    // wanted to avoid.
+    await bot.api.deleteMyCommands().catch((e) => this.logger.warn(`deleteMyCommands failed: ${e}`));
 
     // Global error handler — without this, ANY handler throw crashes the
     // polling loop entirely (grammY default behaviour). Most likely cause
@@ -167,11 +160,11 @@ export class TelegramUpdatesService implements OnModuleInit {
     const cmds =
       mode === 'unlinked'
         ? [
-            {
-              command: 'link',
-              description: t('cmdUnlink', lang).replace('/unlink — ', '').slice(0, 50) || 'Connect to UniLMS',
-            },
+            // Order matters — Telegram renders the compose menu top-down in
+            // the order we hand it. User asked for [help, link] so /help is
+            // visible above /link even when they don't have a code yet.
             { command: 'help', description: 'Help' },
+            { command: 'link', description: 'Connect your UniLMS account — /link 123456' },
           ]
         : [
             { command: 'today', description: t('cmdToday', lang).slice(2, 64) },
