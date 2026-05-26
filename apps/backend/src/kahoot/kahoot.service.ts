@@ -189,17 +189,14 @@ export class KahootService {
     if (existing) throw new BadRequestException('already answered');
 
     const isCorrect = dto.pickedIndex === question.correctIndex;
-    // Flat 100 / totalQuestions per correct answer, no speed bonus.
-    // Rationale: students complained that "I got 1 right out of 5" should
-    // mean exactly 20% — not 19% (slow) or 25% (rounding /totalAnswered).
-    // The score in points and the accuracy percent now both equal
-    // (correctCount / totalQuestions) × 100, so the leaderboard and the
-    // per-player accuracy column tell the same story.
-    const totalQuestions = await this.db.quizQuestion.count({
-      where: { quizId: session.quizId, deletedAt: null },
-    });
-    const pointsPerQuestion = totalQuestions > 0 ? Math.round(100 / totalQuestions) : 0;
-    const pointsEarned = isCorrect ? pointsPerQuestion : 0;
+    // Score model: DB stores raw correct-count (0..N) in attempt.score
+    // and 0/1 in pointsEarned per answer. The displayed score and
+    // accuracy are derived in the report/leaderboard endpoints as
+    // (count / totalQuestions) × 100, kept to one decimal so 100/8
+    // shows as exactly 12.5 instead of getting rounded to 13. Storing
+    // raw counts avoids the rounding-drift problem where 8 × 13 = 104
+    // would exceed the theoretical 100-point ceiling.
+    const pointsEarned = isCorrect ? 1 : 0;
 
     await this.db.quizAttemptAnswer.create({
       data: {
@@ -223,6 +220,10 @@ export class KahootService {
     const session = await this.db.quizSession.findUnique({ where: { id: sessionId } });
     if (!session) throw new NotFoundException();
 
+    const totalQuestions = await this.db.quizQuestion.count({
+      where: { quizId: session.quizId, deletedAt: null },
+    });
+
     const attempts = await this.db.quizAttempt.findMany({
       where: { sessionId },
       include: { student: { select: { id: true, fullName: true } } },
@@ -232,7 +233,9 @@ export class KahootService {
       rank: i + 1,
       userId: a.student.id,
       fullName: a.student.fullName,
-      score: a.score,
+      // Display = (correctCount / totalQuestions) × 100, one decimal.
+      // Eg. 8 questions / 1 correct → 12.5; full sweep → 100.
+      score: totalQuestions > 0 ? Math.round((a.score / totalQuestions) * 1000) / 10 : 0,
     }));
   }
 
@@ -296,17 +299,19 @@ export class KahootService {
     const perPlayer = attempts.map((attempt, i) => {
       const totalAnswered = attempt.answers.length;
       const correctCount = attempt.answers.filter((a) => a.isCorrect).length;
-      // Accuracy denominator is the FULL question count, not just what the
-      // player got around to answering. Unanswered = wrong for grading
-      // purposes — otherwise a player who only answered the 1 question
-      // they knew would show 100% accuracy.
-      const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+      // Both score and accuracy are derived from the same formula —
+      // (correctCount / totalQuestions) × 100 with one decimal place —
+      // so the columns can never disagree. 100 / 8 = 12.5 exactly.
+      // Accuracy denominator is the FULL question count, not just what
+      // the player got around to answering; otherwise a player who
+      // answered only the one question they knew would show 100%.
+      const percent = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 1000) / 10 : 0;
       return {
         userId: attempt.student.id,
         fullName: attempt.student.fullName,
-        score: attempt.score,
+        score: percent,
         rank: i + 1,
-        accuracy,
+        accuracy: percent,
         correctCount,
         totalAnswered,
         completedAt: attempt.completedAt,

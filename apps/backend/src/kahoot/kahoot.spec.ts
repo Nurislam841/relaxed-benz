@@ -272,10 +272,10 @@ describe('Kahoot (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
     });
 
-    it('correct answer earns exactly 20 points on a 5-question quiz (no speed bonus)', async () => {
-      // Q1: answer correctly with a deliberately slow responseTime so the
-      // old speed-bonus formula would've returned <100. New formula: flat
-      // 100/5 = 20.
+    it('correct answer stores 1 raw point, speed bonus removed', async () => {
+      // The on-the-wire `pointsEarned` is now the raw 0/1 increment to
+      // attempt.score — the human-facing percent is derived in the
+      // leaderboard/report responses.
       const cur = await request(app.getHttpServer())
         .get(`/api/kahoot/sessions/${mathSessionId}/current-question`)
         .set('Authorization', `Bearer ${mathStudentToken}`);
@@ -287,7 +287,7 @@ describe('Kahoot (e2e)', () => {
         .send({ questionId: cur.body.id, pickedIndex: 0, responseTimeMs: 25000 });
       expect(ans.status).toBe(201);
       expect(ans.body.isCorrect).toBe(true);
-      expect(ans.body.pointsEarned).toBe(20);
+      expect(ans.body.pointsEarned).toBe(1);
     });
 
     it('report: 1/5 answered correctly ⇒ score=20, accuracy=20% (not 25%, not 100%)', async () => {
@@ -309,6 +309,90 @@ describe('Kahoot (e2e)', () => {
       expect(player.accuracy).toBe(20);
       expect(player.correctCount).toBe(1);
       expect(player.totalAnswered).toBe(1);
+    });
+
+    /**
+     * Decimal precision case the user called out explicitly:
+     *   "если вопросов 8 то 100/8 значить 1 правильный ответ 12,5
+     *    он автоматический должен считать понял?"
+     * 100/8 = 12.5 exactly. We keep one decimal so the displayed
+     * number matches the user's mental model. The old Int-rounded
+     * approach (round(100/8)=13, ×8=104) is what this guards against.
+     */
+    it('8-question quiz: 1 correct ⇒ score=12.5, 8 correct ⇒ score=100 (no rounding drift)', async () => {
+      // Fresh 8-question quiz under the same course/student.
+      const qres = await request(app.getHttpServer())
+        .post(`/api/courses/${mathCourseId}/quizzes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          title: 'Eight',
+          isPublished: true,
+          secondsPerQuestion: 30,
+          questions: Array.from({ length: 8 }).map((_, i) => ({
+            question: `Q${i + 1}`,
+            options: ['A', 'B', 'C', 'D'],
+            correctIndex: 0,
+            points: 100,
+          })),
+        });
+      const eightQuizId = qres.body.id;
+      const sess = await request(app.getHttpServer())
+        .post('/api/kahoot/sessions')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ quizId: eightQuizId });
+      const eightSessionId = sess.body.sessionId;
+      await request(app.getHttpServer())
+        .post(`/api/kahoot/sessions/${eightSessionId}/start`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      // Student answers Q1 correctly, then host runs through the rest.
+      const q1 = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${eightSessionId}/current-question`)
+        .set('Authorization', `Bearer ${mathStudentToken}`);
+      await request(app.getHttpServer())
+        .post(`/api/kahoot/sessions/${eightSessionId}/answer`)
+        .set('Authorization', `Bearer ${mathStudentToken}`)
+        .send({ questionId: q1.body.id, pickedIndex: 0, responseTimeMs: 1500 });
+      for (let i = 0; i < 8; i++) {
+        await request(app.getHttpServer())
+          .post(`/api/kahoot/sessions/${eightSessionId}/next`)
+          .set('Authorization', `Bearer ${adminToken}`);
+      }
+      const repOne = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${eightSessionId}/report`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(repOne.status).toBe(200);
+      expect(repOne.body.perPlayer[0].score).toBe(12.5);
+      expect(repOne.body.perPlayer[0].accuracy).toBe(12.5);
+
+      // Second run: same student, 8 correct = exact 100 (not 104).
+      const sess2 = await request(app.getHttpServer())
+        .post('/api/kahoot/sessions')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ quizId: eightQuizId });
+      const sId2 = sess2.body.sessionId;
+      await request(app.getHttpServer())
+        .post(`/api/kahoot/sessions/${sId2}/start`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      for (let i = 0; i < 8; i++) {
+        const cur = await request(app.getHttpServer())
+          .get(`/api/kahoot/sessions/${sId2}/current-question`)
+          .set('Authorization', `Bearer ${mathStudentToken}`);
+        await request(app.getHttpServer())
+          .post(`/api/kahoot/sessions/${sId2}/answer`)
+          .set('Authorization', `Bearer ${mathStudentToken}`)
+          .send({ questionId: cur.body.id, pickedIndex: 0, responseTimeMs: 1500 });
+        await request(app.getHttpServer())
+          .post(`/api/kahoot/sessions/${sId2}/next`)
+          .set('Authorization', `Bearer ${adminToken}`);
+      }
+      const repAll = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${sId2}/report`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(repAll.body.perPlayer[0].score).toBe(100);
+      expect(repAll.body.perPlayer[0].accuracy).toBe(100);
+      expect(repAll.body.perPlayer[0].correctCount).toBe(8);
     });
   });
 });
