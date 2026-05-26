@@ -423,6 +423,10 @@ model QuizQuestion {
   explanation  String                @default("") @db.Text
   points       Int                   @default(100)
   difficulty   QuestionDifficulty    @default(MEDIUM)
+  // Per-question time limit override. null = inherit Quiz.secondsPerQuestion
+  // (which itself defaults to 30s). Teachers can now give a quick recall
+  // 10s and a multi-step problem 60s within the same quiz.
+  secondsPerQuestion Int?            @map("seconds_per_question")
   createdAt    DateTime              @default(now()) @map("created_at")
   deletedAt    DateTime?             @map("deleted_at")
   quiz         Quiz                  @relation(fields: [quizId], references: [id], onDelete: Cascade)

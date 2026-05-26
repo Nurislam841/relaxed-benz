@@ -8,6 +8,7 @@ import {
   IsEnum,
   ValidateNested,
   Min,
+  Max,
   ArrayMinSize,
   ArrayMaxSize,
 } from 'class-validator';
@@ -30,6 +31,8 @@ export class QuizQuestionInputDto {
   @IsEnum(QuestionDifficulty)
   @IsOptional()
   difficulty?: QuestionDifficulty;
+  /** Per-question time-limit override (seconds). Inherits Quiz.secondsPerQuestion when omitted. */
+  @ApiPropertyOptional() @IsInt() @IsOptional() @Min(5) @Max(300) @Type(() => Number) secondsPerQuestion?: number;
 }
 
 export class CreateQuizDto {
@@ -93,6 +96,13 @@ export class CreateQuizQuestionDto {
   @IsEnum(QuestionDifficulty)
   @IsOptional()
   difficulty?: QuestionDifficulty;
+  /**
+   * Per-question time limit override (seconds). When unset, the question
+   * inherits the Quiz.secondsPerQuestion which itself defaults to 30s.
+   * Capped at 300s to prevent stuck sessions; minimum 5s to keep the
+   * gameplay from feeling impossible.
+   */
+  @ApiPropertyOptional() @IsInt() @IsOptional() @Min(5) @Max(300) @Type(() => Number) secondsPerQuestion?: number;
 }
 
 /**
@@ -116,4 +126,7 @@ export class UpdateQuizQuestionDto {
   @IsOptional()
   difficulty?: QuestionDifficulty;
   @ApiPropertyOptional() @IsInt() @IsOptional() @Min(0) @Type(() => Number) position?: number;
+  // Same per-question time-limit override as on the create DTO. Allows
+  // editing a question's allotted time without re-creating it.
+  @ApiPropertyOptional() @IsInt() @IsOptional() @Min(5) @Max(300) @Type(() => Number) secondsPerQuestion?: number;
 }

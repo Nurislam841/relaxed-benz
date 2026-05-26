@@ -181,7 +181,10 @@ export class KahootGateway implements OnGatewayConnection, OnGatewayDisconnect {
       select: { secondsPerQuestion: true },
     });
 
-    const secondsPerQuestion = quiz?.secondsPerQuestion ?? 30;
+    // Per-question override takes precedence; fall back to quiz default (30s if unset).
+    // This lets teachers give a quick-recall question 10s while a multi-step
+    // problem gets 60s in the same quiz.
+    const secondsPerQuestion = question.secondsPerQuestion ?? quiz?.secondsPerQuestion ?? 30;
     this.server.to(this.room(sessionId)).emit('state:question', {
       id: question.id,
       index: session.currentIndex,

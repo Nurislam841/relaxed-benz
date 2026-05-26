@@ -33,6 +33,8 @@ function toEditable(q: SavedQuizQuestion & { difficulty?: string }): EditableQue
     explanation: q.explanation ?? '',
     points: q.points ?? 100,
     difficulty: (q.difficulty as EditableQuestion['difficulty']) ?? 'MEDIUM',
+    // Per-question time-limit override; null on the backend = inherit quiz default.
+    secondsPerQuestion: q.secondsPerQuestion ?? 30,
   };
 }
 
@@ -48,6 +50,7 @@ function questionChanged(curr: EditableQuestion, prev: EditableQuestion): boolea
     curr.explanation !== prev.explanation ||
     curr.points !== prev.points ||
     curr.difficulty !== prev.difficulty ||
+    curr.secondsPerQuestion !== prev.secondsPerQuestion ||
     JSON.stringify(curr.options) !== JSON.stringify(prev.options)
   );
 }
@@ -158,6 +161,7 @@ export default function QuizEditPage() {
         explanation: q.explanation,
         points: q.points,
         difficulty: q.difficulty,
+        secondsPerQuestion: q.secondsPerQuestion,
       });
     }
     for (const q of diff.toCreate) {
@@ -168,6 +172,7 @@ export default function QuizEditPage() {
         explanation: q.explanation,
         points: q.points,
         difficulty: q.difficulty,
+        secondsPerQuestion: q.secondsPerQuestion,
       });
     }
   };

@@ -147,6 +147,10 @@ export class KahootService {
     });
     if (!question) throw new NotFoundException('no question at current index');
     const total = await this.db.quizQuestion.count({ where: { quizId: session.quizId } });
+    const quiz = await this.db.quiz.findUnique({
+      where: { id: session.quizId },
+      select: { secondsPerQuestion: true },
+    });
     return {
       id: question.id,
       index: session.currentIndex,
@@ -154,7 +158,9 @@ export class KahootService {
       question: question.question,
       options: question.options,
       points: question.points,
-      secondsPerQuestion: 30,
+      // Per-question override → quiz default → 30s ultimate fallback.
+      // Same precedence as the WebSocket emitCurrentQuestion path.
+      secondsPerQuestion: question.secondsPerQuestion ?? quiz?.secondsPerQuestion ?? 30,
     };
   }
 

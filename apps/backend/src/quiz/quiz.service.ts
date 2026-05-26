@@ -66,6 +66,8 @@ export class QuizService {
           explanation: q.explanation ?? '',
           points: q.points ?? 100,
           difficulty: q.difficulty ?? QuestionDifficulty.MEDIUM,
+          // null lets it inherit quiz.secondsPerQuestion at play time
+          secondsPerQuestion: q.secondsPerQuestion ?? null,
         })),
       });
       return created;
@@ -187,6 +189,7 @@ export class QuizService {
         explanation: dto.explanation ?? '',
         points: dto.points ?? 100,
         difficulty: dto.difficulty ?? QuestionDifficulty.MEDIUM,
+        secondsPerQuestion: dto.secondsPerQuestion ?? null,
       },
     });
     await this.activityLog.log(user.id, 'CREATE', 'QuizQuestion', created.id);
@@ -234,6 +237,7 @@ export class QuizService {
             explanation: dto.explanation,
             points: dto.points,
             difficulty: dto.difficulty,
+            secondsPerQuestion: dto.secondsPerQuestion,
           },
         });
       });
@@ -250,6 +254,7 @@ export class QuizService {
         explanation: dto.explanation,
         points: dto.points,
         difficulty: dto.difficulty,
+        secondsPerQuestion: dto.secondsPerQuestion,
       },
     });
     await this.activityLog.log(user.id, 'UPDATE', 'QuizQuestion', questionId);

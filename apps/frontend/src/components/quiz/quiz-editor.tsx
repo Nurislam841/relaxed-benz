@@ -29,6 +29,12 @@ export interface EditableQuestion {
   explanation: string;
   points: number;
   difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  /**
+   * Per-question time limit in seconds. Default 30. Editor uses an
+   * integer but allow undefined so older AI payloads that omit it
+   * fall through to the saved quiz's quizLevel default.
+   */
+  secondsPerQuestion?: number;
 }
 
 interface QuizEditorProps {
@@ -62,6 +68,7 @@ function emptyQuestion(): EditableQuestion {
     explanation: '',
     points: 100,
     difficulty: 'MEDIUM',
+    secondsPerQuestion: 30,
   };
 }
 
@@ -398,8 +405,8 @@ export function QuizEditor({ questions, onChange, heading = 'Questions', disable
               )}
             </div>
 
-            {/* Difficulty + points + explanation */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Difficulty + points + time-limit */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor={`q-${qi}-diff`}>Difficulty</Label>
                 <Select
@@ -422,6 +429,24 @@ export function QuizEditor({ questions, onChange, heading = 'Questions', disable
                   value={q.points}
                   onChange={(e) => updateAt(qi, { points: Math.max(1, parseInt(e.target.value) || 100) })}
                   disabled={disabled}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`q-${qi}-time`}>Time limit (sec)</Label>
+                <Input
+                  id={`q-${qi}-time`}
+                  type="number"
+                  min={5}
+                  max={300}
+                  step={5}
+                  value={q.secondsPerQuestion ?? 30}
+                  onChange={(e) =>
+                    updateAt(qi, {
+                      secondsPerQuestion: Math.min(300, Math.max(5, parseInt(e.target.value) || 30)),
+                    })
+                  }
+                  disabled={disabled}
+                  title="How many seconds students have to answer this question (5-300, default 30)"
                 />
               </div>
             </div>

@@ -63,6 +63,9 @@ function aiToEditable(q: QuizQuestion): EditableQuestion {
     explanation: q.explanation,
     points: 100,
     difficulty: ((q as any).difficulty as EditableQuestion['difficulty']) ?? 'MEDIUM',
+    // AI doesn't propose a per-question time — start everyone at 30s,
+    // teacher can fine-tune in the editor before Save / Host live.
+    secondsPerQuestion: 30,
   };
 }
 
@@ -146,6 +149,9 @@ export default function QuizPage() {
         explanation: q.explanation,
         points: q.points,
         difficulty: q.difficulty,
+        // Persist per-question time-limit so Kahoot replay reads the
+        // teacher's pick instead of falling back to the 30s default.
+        secondsPerQuestion: q.secondsPerQuestion ?? 30,
       })),
     };
   };
@@ -389,6 +395,7 @@ export default function QuizPage() {
         explanation: '',
         points: 100,
         difficulty: 'MEDIUM',
+        secondsPerQuestion: 30,
       },
     ]);
     setLoadedFromLibraryId(null);

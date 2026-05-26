@@ -329,4 +329,83 @@ describe('Quiz (e2e)', () => {
       expect(res.status).toBe(401);
     });
   });
+
+  /**
+   * Per-question time-limit override. Teachers can now set a custom
+   * timer per question (5..300s) instead of the whole quiz using a
+   * single number. When omitted the question inherits the quiz default
+   * (which itself defaults to 30s).
+   */
+  describe('per-question secondsPerQuestion override', () => {
+    it('accepts secondsPerQuestion on create and round-trips it via GET', async () => {
+      const create = await request(app.getHttpServer())
+        .post(`/api/courses/${courseId}/quizzes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          title: 'Time spec',
+          isPublished: true,
+          secondsPerQuestion: 30,
+          questions: [
+            { question: 'Fast?', options: ['A', 'B'], correctIndex: 0, secondsPerQuestion: 10 },
+            { question: 'Slow?', options: ['A', 'B'], correctIndex: 0, secondsPerQuestion: 90 },
+            { question: 'Default?', options: ['A', 'B'], correctIndex: 0 },
+          ],
+        });
+      expect(create.status).toBe(201);
+      const got = await request(app.getHttpServer())
+        .get(`/api/quizzes/${create.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(got.status).toBe(200);
+      const qs = got.body.questions;
+      expect(qs[0].secondsPerQuestion).toBe(10);
+      expect(qs[1].secondsPerQuestion).toBe(90);
+      // Omitted → stored as null on the DB, the play layer falls back
+      // to quiz.secondsPerQuestion (30) at game time.
+      expect(qs[2].secondsPerQuestion).toBeNull();
+    });
+
+    it('rejects out-of-range values (Min 5, Max 300)', async () => {
+      const tooLow = await request(app.getHttpServer())
+        .post(`/api/courses/${courseId}/quizzes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          title: 'Bad time',
+          isPublished: true,
+          questions: [{ question: 'Q', options: ['A', 'B'], correctIndex: 0, secondsPerQuestion: 3 }],
+        });
+      expect(tooLow.status).toBe(400);
+
+      const tooHigh = await request(app.getHttpServer())
+        .post(`/api/courses/${courseId}/quizzes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          title: 'Bad time',
+          isPublished: true,
+          questions: [{ question: 'Q', options: ['A', 'B'], correctIndex: 0, secondsPerQuestion: 9999 }],
+        });
+      expect(tooHigh.status).toBe(400);
+    });
+
+    it('PATCH /quiz-questions/:id updates secondsPerQuestion', async () => {
+      const create = await request(app.getHttpServer())
+        .post(`/api/courses/${courseId}/quizzes`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          title: 'Update time',
+          isPublished: true,
+          questions: [{ question: 'Q', options: ['A', 'B'], correctIndex: 0 }],
+        });
+      const got = await request(app.getHttpServer())
+        .get(`/api/quizzes/${create.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      const qid = got.body.questions[0].id;
+
+      const patch = await request(app.getHttpServer())
+        .patch(`/api/quiz-questions/${qid}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ secondsPerQuestion: 45 });
+      expect(patch.status).toBe(200);
+      expect(patch.body.secondsPerQuestion).toBe(45);
+    });
+  });
 });
