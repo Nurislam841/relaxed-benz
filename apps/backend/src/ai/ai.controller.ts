@@ -1,8 +1,22 @@
-import { Controller, Post, Get, Body, UseGuards, Res, HttpCode, ForbiddenException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  UseGuards,
+  Res,
+  HttpCode,
+  ForbiddenException,
+  UseInterceptors,
+  UploadedFile,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { AuthGuard } from '@nestjs/passport';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AiService } from './ai.service';
+import { extractMaterialText } from './material-extractor';
 import {
   AssignmentFeedbackDto,
   GenerateQuizDto,
@@ -61,6 +75,37 @@ export class AiController {
       throw new ForbiddenException('Only teachers and admins can generate quizzes');
     }
     return this.svc.generateQuiz(dto, user.id);
+  }
+
+  /**
+   * Feature #1: lecture upload → text extraction.
+   *
+   * Teacher uploads PDF/DOCX/TXT, we hand back the plaintext that the
+   * frontend then includes as `materialText` on the follow-up
+   * /generate-quiz call. Split into two endpoints (vs. accepting the
+   * file directly on /generate-quiz) so the UI can show "extracted 18,000
+   * characters from your slides" feedback before the slow Claude call,
+   * and so future features can reuse the same extraction (e.g., feeding
+   * material into the per-student plan in Feature #4).
+   *
+   * 25MB upload cap on multer + 200KB cap on returned text — see
+   * material-extractor.ts.
+   */
+  @Post('extract-text')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Extract plain text from a lecture file (PDF/DOCX/TXT) for AI quiz generation (teacher/admin only)',
+  })
+  @ApiResponse({ status: 200, description: '{ text, rawCharCount, truncated, kind }' })
+  @ApiResponse({ status: 400, description: 'Unsupported file type or unreadable content' })
+  @ApiResponse({ status: 403, description: 'Students cannot extract lecture material' })
+  async extractText(@UploadedFile() file: Express.Multer.File, @CurrentUser() user: any) {
+    if (user.role === Role.STUDENT) {
+      throw new ForbiddenException('Only teachers and admins can upload lecture material');
+    }
+    return extractMaterialText(file);
   }
 
   @Post('course-summary')

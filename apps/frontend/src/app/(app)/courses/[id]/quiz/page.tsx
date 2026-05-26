@@ -1,9 +1,23 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Sparkles, RotateCcw, Trophy, Brain, ArrowRight, Radio, PlayCircle, ArrowLeft, Plus } from 'lucide-react';
+import {
+  Sparkles,
+  RotateCcw,
+  Trophy,
+  Brain,
+  ArrowRight,
+  Radio,
+  PlayCircle,
+  ArrowLeft,
+  Plus,
+  Upload,
+  FileText,
+  X,
+  Loader2,
+} from 'lucide-react';
 import { celebrate } from '@/lib/celebrate';
 import { api } from '@/lib/api';
 import { useMe } from '@/hooks/use-auth';
@@ -63,6 +77,20 @@ export default function QuizPage() {
   const [topic, setTopic] = useState('');
   const [count, setCount] = useState('5');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+
+  // Feature #1: uploaded lecture material (PDF / DOCX / TXT) becomes the
+  // AI's primary context for question generation. When set, the resulting
+  // quiz is anchored to the teacher's actual lecture rather than generic
+  // knowledge of the topic.
+  const [materialText, setMaterialText] = useState<string>('');
+  const [materialMeta, setMaterialMeta] = useState<{
+    filename: string;
+    rawCharCount: number;
+    truncated: boolean;
+    kind: 'pdf' | 'docx' | 'text';
+  } | null>(null);
+  const [uploadingMaterial, setUploadingMaterial] = useState(false);
+  const materialFileRef = useRef<HTMLInputElement>(null);
 
   const [quiz, setQuiz] = useState<AiQuiz | null>(null);
   /**
@@ -180,6 +208,53 @@ export default function QuizPage() {
     hard: t.courseQuiz.hard,
   };
 
+  /**
+   * Upload a lecture file (PDF / DOCX / TXT) and stash the extracted text
+   * so the next /ai/generate-quiz call can use it as context. We bypass
+   * the api.ts wrapper here because it doesn't handle multipart payloads.
+   */
+  const handleMaterialUpload = async (file: File) => {
+    setUploadingMaterial(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const r = await fetch('/api/ai/extract-text', { method: 'POST', body: form, credentials: 'include' });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ message: `Error ${r.status}` }));
+        throw new Error(err.message || `Error ${r.status}`);
+      }
+      const data = (await r.json()) as {
+        text: string;
+        rawCharCount: number;
+        truncated: boolean;
+        kind: 'pdf' | 'docx' | 'text';
+      };
+      setMaterialText(data.text);
+      setMaterialMeta({
+        filename: file.name,
+        rawCharCount: data.rawCharCount,
+        truncated: data.truncated,
+        kind: data.kind,
+      });
+      toast({
+        title: 'Material loaded',
+        description: `Extracted ${data.text.length.toLocaleString()} characters from ${file.name}${
+          data.truncated ? ' (truncated)' : ''
+        }`,
+      });
+    } catch (e: any) {
+      toast({ title: 'Upload failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setUploadingMaterial(false);
+      if (materialFileRef.current) materialFileRef.current.value = '';
+    }
+  };
+
+  const clearMaterial = () => {
+    setMaterialText('');
+    setMaterialMeta(null);
+  };
+
   const handleGenerate = async () => {
     if (!topic.trim()) {
       toast({ title: t.courseQuiz.enterTopic, variant: 'destructive' });
@@ -206,6 +281,9 @@ export default function QuizPage() {
         questionCount: parseInt(count),
         difficulty,
         lang,
+        // When teacher uploaded a lecture, anchor the AI to that text;
+        // otherwise omit and Claude generates from generic knowledge.
+        ...(materialText ? { materialText } : {}),
       });
       clearTimeout(t1);
       setSteps((s) =>
@@ -345,6 +423,59 @@ export default function QuizPage() {
           ) : (
             <Card padding="lg">
               <div className="space-y-4">
+                {/* Lecture upload — Feature #1. Optional; when set, the AI
+                    grounds every question in this material instead of
+                    relying on generic knowledge of the topic. */}
+                <div className="space-y-1.5">
+                  <Label>Lecture material (optional)</Label>
+                  {materialMeta ? (
+                    <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="h-4 w-4 text-[var(--accent-600)] shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-medium truncate">{materialMeta.filename}</p>
+                          <p className="text-[11px] text-[var(--fg-muted)] font-mono">
+                            {materialMeta.kind.toUpperCase()} · {materialMeta.rawCharCount.toLocaleString()} chars
+                            {materialMeta.truncated ? ' · truncated to 200k' : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={clearMaterial} title="Remove material">
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <label
+                      htmlFor="material-upload"
+                      className="flex items-center justify-center gap-2 rounded-md border border-dashed border-[var(--border-color)] bg-[var(--surface-subtle)] px-3 py-3 text-[13px] text-[var(--fg-muted)] cursor-pointer hover:bg-[var(--surface-hover)] hover:border-[var(--accent-400)] transition-colors"
+                    >
+                      {uploadingMaterial ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <span>Extracting text…</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-3.5 w-3.5" />
+                          <span>Upload lecture (PDF, DOCX, TXT) — AI will use it as context</span>
+                        </>
+                      )}
+                      <input
+                        ref={materialFileRef}
+                        id="material-upload"
+                        type="file"
+                        accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+                        className="hidden"
+                        disabled={uploadingMaterial}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleMaterialUpload(f);
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
                 <div className="space-y-1.5">
                   <Label htmlFor="topic">{t.courseQuiz.topic}</Label>
                   <Input

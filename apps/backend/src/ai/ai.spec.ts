@@ -165,6 +165,100 @@ describe('AI endpoints (e2e, demo mode)', () => {
     expect(res.status).toBe(403);
   });
 
+  /**
+   * Feature #1 — accept lecture text on /generate-quiz. The DTO now
+   * carries an optional `materialText` string; teachers paste/upload
+   * lecture content and Claude is told to anchor questions to it.
+   * In demo mode the AiService still returns a stub, but the request
+   * MUST be accepted (no 400 from class-validator) — that's what we
+   * lock here.
+   */
+  it('POST /api/ai/generate-quiz — accepts optional materialText payload', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/ai/generate-quiz')
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({
+        courseId,
+        topic: 'SQL JOINs',
+        questionCount: 3,
+        difficulty: 'medium',
+        materialText:
+          'INNER JOIN combines rows from two tables based on a matching column. LEFT JOIN includes all rows from the left table.',
+      });
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.questions)).toBe(true);
+  });
+
+  // ─── /api/ai/extract-text (Feature #1) ────────────────────────────────────
+
+  describe('POST /api/ai/extract-text', () => {
+    it('accepts plaintext file and returns extracted text + meta', async () => {
+      const body = 'Lecture 4 — Design patterns. Observer notifies subscribers when state changes.';
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/extract-text')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .attach('file', Buffer.from(body, 'utf-8'), { filename: 'lecture.txt', contentType: 'text/plain' });
+      expect(res.status).toBe(200);
+      expect(res.body.kind).toBe('text');
+      expect(res.body.text).toContain('Observer');
+      expect(res.body.truncated).toBe(false);
+      expect(typeof res.body.rawCharCount).toBe('number');
+    });
+
+    it('rejects unsupported file types (400)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/extract-text')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .attach('file', Buffer.from('binary garbage'), {
+          filename: 'image.jpg',
+          contentType: 'image/jpeg',
+        });
+      expect(res.status).toBe(400);
+      // The message guides the teacher toward a workable format —
+      // particularly important for PowerPoint, which we don't parse.
+      expect(res.body.message).toMatch(/PDF|DOCX|plain text/i);
+    });
+
+    it('rejects empty file (400)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/extract-text')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .attach('file', Buffer.from(''), { filename: 'empty.txt', contentType: 'text/plain' });
+      // multer may return 400 on truly-empty body before the extractor
+      // ever runs; either path is acceptable, but the upload must NOT
+      // succeed with a 200.
+      expect([400, 500]).toContain(res.status);
+    });
+
+    it('students are blocked (403)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/extract-text')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .attach('file', Buffer.from('whatever'), { filename: 'x.txt', contentType: 'text/plain' });
+      expect(res.status).toBe(403);
+    });
+
+    it('requires authentication (401)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/extract-text')
+        .attach('file', Buffer.from('whatever'), { filename: 'x.txt', contentType: 'text/plain' });
+      expect(res.status).toBe(401);
+    });
+
+    it('truncates output at MAX_EXTRACTED_CHARS', async () => {
+      // 250KB > the 200KB MAX_EXTRACTED_CHARS cap.
+      const big = 'a'.repeat(250_000);
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/extract-text')
+        .set('Authorization', `Bearer ${teacherToken}`)
+        .attach('file', Buffer.from(big, 'utf-8'), { filename: 'big.txt', contentType: 'text/plain' });
+      expect(res.status).toBe(200);
+      expect(res.body.truncated).toBe(true);
+      expect(res.body.text.length).toBeLessThanOrEqual(200_000);
+      expect(res.body.rawCharCount).toBeGreaterThanOrEqual(250_000);
+    });
+  });
+
   // ─── /api/ai/course-summary ────────────────────────────────────────────────
 
   it('POST /api/ai/course-summary — returns the documented shape', async () => {

@@ -419,7 +419,25 @@ Be encouraging and constructive. Format as JSON: { "assessment": "...", "strengt
           ? 'Distribute as HARD=70%, MEDIUM=30%.'
           : 'Distribute roughly evenly: EASY≈33%, MEDIUM≈33%, HARD≈33%.';
 
-    const prompt = `Generate a quiz about "${dto.topic}" for the course "${courseName}".
+    // When the teacher uploaded a lecture file (Feature #1), use that text
+    // as the *primary* source. Without uploaded material, Claude generates
+    // generic questions about the topic from its own knowledge — fine, but
+    // not aligned to what this teacher actually covered. With uploaded
+    // material, Claude is told to ground every question in the text, so
+    // the quiz becomes course-specific.
+    const materialBlock =
+      dto.materialText && dto.materialText.trim().length > 50
+        ? `
+The teacher provided the following lecture material. Generate questions STRICTLY from this material — do not invent facts that aren't supported by the text. If the material doesn't cover the requested topic well, still anchor every question to a concept that appears in the material.
+
+--- LECTURE MATERIAL START ---
+${dto.materialText}
+--- LECTURE MATERIAL END ---
+
+`
+        : '';
+
+    const prompt = `${materialBlock}Generate a quiz about "${dto.topic}" for the course "${courseName}".
 Create exactly ${count} multiple-choice questions.
 Each question must have exactly 4 answer options (A, B, C, D).
 

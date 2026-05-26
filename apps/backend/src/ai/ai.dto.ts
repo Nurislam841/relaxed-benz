@@ -18,6 +18,14 @@ export class GenerateQuizDto {
   @IsIn(['easy', 'medium', 'hard'])
   difficulty?: string;
   @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
+  /**
+   * Optional lecture text extracted from a teacher-uploaded file (PDF/DOCX/TXT
+   * via POST /ai/extract-text). When set, Claude is told to generate the quiz
+   * *strictly from this material* rather than from generic knowledge of the
+   * topic — produces course-specific questions instead of generic ones.
+   * The frontend caps the string at MAX_EXTRACTED_CHARS (200KB) before sending.
+   */
+  @ApiPropertyOptional() @IsOptional() @IsString() materialText?: string;
 }
 
 export class CourseSummaryDto {
