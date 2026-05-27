@@ -22,6 +22,7 @@ import {
   Activity,
   Sparkles,
   Radio,
+  History,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMe } from '@/hooks/use-auth';
@@ -39,6 +40,7 @@ const MAIN_GROUP: NavItem[] = [
 const SECONDARY_GROUP: NavItem[] = [
   { href: '/ai-analysis', key: 'aiAnalysis', icon: Sparkles },
   { href: '/kahoot/play', key: 'joinLive', icon: Radio },
+  { href: '/kahoot/history', key: 'kahootHistory', icon: History },
   { href: '/search', key: 'search', icon: Search },
   { href: '/notifications', key: 'notifications', icon: Bell },
   { href: '/activity', key: 'activity', icon: Activity },

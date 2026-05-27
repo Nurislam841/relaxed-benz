@@ -201,6 +201,49 @@ describe('Kahoot (e2e)', () => {
   });
 
   /**
+   * Kahoot history endpoints — students see what they played,
+   * teachers see what they hosted. Caller-scoped so no global leak.
+   */
+  describe('Kahoot history', () => {
+    it('GET /sessions/my-history returns the student own played sessions', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/kahoot/sessions/my-history')
+        .set('Authorization', `Bearer ${studentToken}`);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      // The earlier "start → answer → finish" flow created an attempt
+      // for this student in this session — it MUST appear in their history.
+      const found = res.body.find((row: any) => row.sessionId === sessionId);
+      expect(found).toBeDefined();
+      expect(found.quizTitle).toBe('Live Quiz');
+      expect(typeof found.myScore).toBe('number');
+      expect(typeof found.joinCode).toBe('string');
+    });
+
+    it('GET /sessions/hosted-history returns the host own sessions (admin sees all)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/kahoot/sessions/hosted-history')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      const found = res.body.find((row: any) => row.sessionId === sessionId);
+      expect(found).toBeDefined();
+      expect(typeof found.totalPlayers).toBe('number');
+      expect(typeof found.avgScore).toBe('number');
+    });
+
+    it('GET /sessions/my-history requires auth', async () => {
+      const res = await request(app.getHttpServer()).get('/api/kahoot/sessions/my-history');
+      expect(res.status).toBe(401);
+    });
+
+    it('GET /sessions/hosted-history requires auth', async () => {
+      const res = await request(app.getHttpServer()).get('/api/kahoot/sessions/hosted-history');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  /**
    * Feature #4 — student-facing post-session endpoint.
    *
    * Distinct from /report (host-only). A student who actually played

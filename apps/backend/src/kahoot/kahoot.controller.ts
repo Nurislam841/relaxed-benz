@@ -85,4 +85,25 @@ export class KahootController {
   myResults(@Param('id') id: string, @CurrentUser() u: any) {
     return this.svc.getMyResults(id, u);
   }
+
+  /**
+   * Quiz history endpoints (Feature: Kahoot history).
+   *
+   *   /sessions/my-history     → sessions the caller played (any role)
+   *   /sessions/hosted-history → sessions the caller hosted (teacher/admin)
+   *
+   * Both are scoped to the caller — no global session list leaks. Used
+   * by the /kahoot/history page so users can find their old games.
+   */
+  @Get('sessions/my-history')
+  @ApiOperation({ summary: 'List of Kahoot sessions the calling user played' })
+  myHistory(@CurrentUser() u: any) {
+    return this.svc.getMyKahootHistory(u);
+  }
+
+  @Get('sessions/hosted-history')
+  @ApiOperation({ summary: 'List of Kahoot sessions the calling user hosted (teacher/admin only)' })
+  hostedHistory(@CurrentUser() u: any) {
+    return this.svc.getHostedKahootHistory(u);
+  }
 }

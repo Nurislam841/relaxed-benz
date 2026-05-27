@@ -399,6 +399,106 @@ export class KahootService {
   }
 
   /**
+   * Student-facing Kahoot history. Every session the caller actually
+   * played (= has an attempt row), newest first. Used by the
+   * /kahoot/history page so a student can find their old games
+   * without remembering the joinCode.
+   */
+  async getMyKahootHistory(user: AuthUser, limit = 50) {
+    const attempts = await this.db.quizAttempt.findMany({
+      where: { studentId: user.id, sessionId: { not: null } },
+      include: {
+        session: {
+          include: {
+            quiz: { select: { id: true, title: true } },
+            host: { select: { id: true, fullName: true } },
+          },
+        },
+        answers: { select: { isCorrect: true } },
+      },
+      // QuizAttempt has startedAt as a non-null DateTime; sort newest
+      // first so the history page reads top-down chronologically.
+      orderBy: { startedAt: 'desc' },
+      take: limit,
+    });
+
+    // Map each attempt → history row. The session field is non-null
+    // because we filtered for it above, but TypeScript can't see that.
+    return attempts
+      .filter((a) => a.session)
+      .map((a) => {
+        const session = a.session!;
+        // Re-compute percent the same way getMyResults does — DB stores
+        // attempt.score as raw correct-count.
+        const totalQuestionsField = a.totalPoints || 0;
+        const correctCount = a.answers.filter((x) => x.isCorrect).length;
+        // Fall back to score column if totalPoints isn't populated.
+        const myScore = a.score;
+        return {
+          sessionId: session.id,
+          joinCode: session.joinCode,
+          quizId: session.quiz.id,
+          quizTitle: session.quiz.title,
+          hostName: session.host.fullName,
+          status: session.status,
+          startedAt: session.startedAt,
+          endedAt: session.endedAt,
+          myScore,
+          correctCount,
+          totalQuestions: totalQuestionsField, // unused for display; left for diagnostics
+        };
+      });
+  }
+
+  /**
+   * Teacher-facing hosted-Kahoot history. Sessions the caller hosted
+   * (or any session if ADMIN), newest first. Includes participant
+   * count + avg score so the teacher sees attendance & class
+   * performance at a glance before opening the full report.
+   */
+  async getHostedKahootHistory(user: AuthUser, limit = 50) {
+    const where = user.role === Role.ADMIN ? {} : { hostId: user.id };
+    const sessions = await this.db.quizSession.findMany({
+      where,
+      include: {
+        quiz: { select: { id: true, title: true, _count: { select: { questions: true } } } },
+        host: { select: { id: true, fullName: true } },
+        _count: { select: { attempts: true } },
+        attempts: { select: { score: true } },
+      },
+      orderBy: { startedAt: 'desc' },
+      take: limit,
+    });
+
+    return sessions.map((s) => {
+      const totalQuestions = s.quiz._count.questions;
+      // attempt.score is already a percent (0..100, raw count out of N
+      // since the scoring rewrite), so a plain mean is fine.
+      const avgScore =
+        s.attempts.length > 0
+          ? Math.round(
+              (s.attempts.reduce((sum, a) => sum + a.score, 0) / s.attempts.length) *
+                (totalQuestions > 0 ? 100 / totalQuestions : 0) *
+                10,
+            ) / 10
+          : 0;
+      return {
+        sessionId: s.id,
+        joinCode: s.joinCode,
+        quizId: s.quiz.id,
+        quizTitle: s.quiz.title,
+        hostName: s.host.fullName,
+        status: s.status,
+        startedAt: s.startedAt,
+        endedAt: s.endedAt,
+        totalPlayers: s._count.attempts,
+        totalQuestions,
+        avgScore,
+      };
+    });
+  }
+
+  /**
    * Feature #4 — student-facing per-session results.
    *
    * Where getSessionReport is host-only and dumps everyone's data,
