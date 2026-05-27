@@ -50,6 +50,8 @@ export class CreateQuizDto {
   @ApiPropertyOptional() @IsString() @IsOptional() sourceMaterialKey?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() sourceMaterialFileName?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() sourceMaterialMime?: string;
+  /** Extracted plaintext from the material — fed to AI for the personalized study guide. */
+  @ApiPropertyOptional() @IsString() @IsOptional() sourceMaterialText?: string;
   @ApiProperty({ type: [QuizQuestionInputDto] })
   @IsArray()
   @ArrayMinSize(1)

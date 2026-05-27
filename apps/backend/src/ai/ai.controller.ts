@@ -29,6 +29,7 @@ import {
   CodeReviewDto,
   QuizAssistDto,
   KahootInsightsDto,
+  KahootStudyGuideDto,
 } from './ai.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
@@ -138,6 +139,25 @@ export class AiController {
   @ApiResponse({ status: 403, description: 'Caller is not the session host (or admin)' })
   kahootInsights(@Body() dto: KahootInsightsDto, @CurrentUser() user: any) {
     return this.svc.kahootInsights(dto, user);
+  }
+
+  /**
+   * Personalized study guide for a student after a Kahoot session.
+   * Auto-picks "extract from teacher's material" vs "generate from
+   * scratch" based on whether the quiz has uploaded source material.
+   * Self-lookup is allowed for students (own studentId); other-student
+   * lookups are host/admin only.
+   */
+  @Post('kahoot-study-guide')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Personalized study guide post-session (auto: material-anchored or AI-generated)' })
+  @ApiResponse({
+    status: 200,
+    description: '{ hasMaterial, topLine, sections[], mostImportant }; _demo:true without LLM key.',
+  })
+  @ApiResponse({ status: 403, description: 'Not the session host AND not asking about yourself' })
+  kahootStudyGuide(@Body() dto: KahootStudyGuideDto, @CurrentUser() user: any) {
+    return this.svc.kahootStudyGuide(dto, user);
   }
 
   @Post('extract-text')

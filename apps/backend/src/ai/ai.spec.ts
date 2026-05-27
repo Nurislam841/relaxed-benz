@@ -450,6 +450,49 @@ describe('AI endpoints (e2e, demo mode)', () => {
         .send({ sessionId: kahootSessionId, scope: 'class' });
       expect(res.status).toBe(401);
     });
+
+    /**
+     * Personalized study guide — auto-falls-back to AI-generated
+     * mini-lesson when the quiz has no source material. The smoke
+     * quiz built above has no material, so hasMaterial=false and
+     * each section uses the `lesson` field (vs `sourceQuote`).
+     */
+    describe('POST /api/ai/kahoot-study-guide', () => {
+      it('student-self lookup returns guide shape', async () => {
+        const res = await request(app.getHttpServer())
+          .post('/api/ai/kahoot-study-guide')
+          .set('Authorization', `Bearer ${insightsStudentToken}`)
+          .send({ sessionId: kahootSessionId, studentId: kahootStudentId });
+        expect(res.status).toBe(200);
+        expect(typeof res.body.hasMaterial).toBe('boolean');
+        expect(typeof res.body.topLine).toBe('string');
+        expect(Array.isArray(res.body.sections)).toBe(true);
+        expect(typeof res.body.mostImportant).toBe('string');
+      });
+
+      it('returns 403 when student asks about someone else', async () => {
+        const res = await request(app.getHttpServer())
+          .post('/api/ai/kahoot-study-guide')
+          .set('Authorization', `Bearer ${insightsStudentToken}`)
+          .send({ sessionId: kahootSessionId, studentId: 'not-me' });
+        expect(res.status).toBe(403);
+      });
+
+      it('requires auth (401)', async () => {
+        const res = await request(app.getHttpServer())
+          .post('/api/ai/kahoot-study-guide')
+          .send({ sessionId: kahootSessionId, studentId: kahootStudentId });
+        expect(res.status).toBe(401);
+      });
+
+      it('rejects missing studentId (400)', async () => {
+        const res = await request(app.getHttpServer())
+          .post('/api/ai/kahoot-study-guide')
+          .set('Authorization', `Bearer ${insightsStudentToken}`)
+          .send({ sessionId: kahootSessionId });
+        expect(res.status).toBe(400);
+      });
+    });
   });
 
   // ─── /api/ai/quiz-assist (Feature #2 — inline editor AI) ────────────────

@@ -124,6 +124,29 @@ export class QuizAssistDto {
 }
 
 /**
+ * Personalized study guide for a student after a Kahoot session.
+ *
+ * Two modes the service picks between automatically:
+ *   1. Quiz has uploaded material → AI extracts focused excerpts from
+ *      the lecture text that map to the student's wrong answers, plus
+ *      "why X is right / why Y is wrong" explanations and follow-up
+ *      example exercises.
+ *   2. Quiz has NO material → AI generates a mini-lesson from
+ *      scratch on the weak topics, same shape as mode 1 minus the
+ *      sourceQuote field.
+ *
+ * Auth identical to /ai/kahoot-insights — self-lookup (caller's own
+ * studentId) goes through the student-facing path; teacher/admin can
+ * look up any student via the host-only path.
+ */
+export class KahootStudyGuideDto {
+  @ApiProperty() @IsString() @IsNotEmpty() sessionId: string;
+  /** Required. Either the caller's own id (self-lookup) or any player's id (host/admin only). */
+  @ApiProperty() @IsString() @IsNotEmpty() studentId: string;
+  @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
+}
+
+/**
  * Feature #3 — AI insights on a finished Kahoot session report.
  *
  * Two scopes:

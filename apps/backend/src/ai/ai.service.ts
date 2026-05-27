@@ -19,6 +19,7 @@ import {
   QuizAssistDto,
   QuizAssistAction,
   KahootInsightsDto,
+  KahootStudyGuideDto,
 } from './ai.dto';
 import { KahootService } from '../kahoot/kahoot.service';
 import { Inject, forwardRef } from '@nestjs/common';
@@ -968,6 +969,245 @@ No prose outside the JSON, no fences.`;
       strengths: Array.isArray(parsed?.strengths) ? parsed.strengths.map((s: any) => String(s)) : [],
       gaps: Array.isArray(parsed?.gaps) ? parsed.gaps.map((g: any) => String(g)) : [],
       nextStep: String(parsed?.nextStep ?? '').trim(),
+    };
+  }
+
+  /**
+   * Personalized study guide — the close-the-loop feature.
+   *
+   * Two flavours based on whether the quiz has uploaded source
+   * material:
+   *
+   *   1. WITH MATERIAL → AI is given the lecture text + the student's
+   *      wrong answers. Output: 2-4 sections, each tied to a missed
+   *      question, with a quoted excerpt from the lecture, an
+   *      explanation, and a follow-up example. Beats sending the
+   *      whole 200-page PDF — the student knows where to look.
+   *
+   *   2. WITHOUT MATERIAL → AI generates a mini-lesson from scratch
+   *      on the weak topics. Same shape minus the source quote.
+   *
+   * Auth: same self-lookup pattern as /ai/kahoot-insights. Caller
+   * asking for themselves goes through the student-facing
+   * getMyResults; everyone else hits the host-only report (403 if
+   * not host). Demo mode returns clearly-labelled placeholder text.
+   */
+  async kahootStudyGuide(dto: KahootStudyGuideDto, user: { id: string; role: string }) {
+    const isSelfLookup = dto.studentId === user.id;
+
+    // Pull the quiz's stored material text. Done via the session in
+    // one query so we don't double-fetch.
+    const session = await this.db.quizSession.findUnique({
+      where: { id: dto.sessionId },
+      include: { quiz: { select: { sourceMaterialText: true, title: true } } },
+    });
+    const sourceMaterial = session?.quiz?.sourceMaterialText ?? null;
+    const quizTitle = session?.quiz?.title ?? 'this quiz';
+
+    // Get the player's data via the same auth-aware path as
+    // kahoot-insights. Self-lookup goes through getMyResults, anyone
+    // else needs to be host.
+    let targetPlayer: any;
+    if (isSelfLookup) {
+      const my = await this.kahootSvc.getMyResults(dto.sessionId, user as any);
+      targetPlayer = {
+        fullName: 'You',
+        correctCount: my.me.correctCount,
+        answers: my.answers,
+      };
+    } else {
+      const report = await this.kahootSvc.getSessionReport(dto.sessionId, user as any);
+      const p = report.perPlayer.find((p: any) => p.userId === dto.studentId);
+      if (!p) throw new BadRequestException('studentId not found in this session');
+      targetPlayer = p;
+    }
+
+    const wrongAnswers = (targetPlayer.answers || []).filter((a: any) => !a.isCorrect && a.pickedIndex !== null);
+    // No wrong answers → still produce a "well done" guide, but short.
+    const hasMistakes = wrongAnswers.length > 0;
+
+    if (this.isDemo) {
+      return this.buildStudyGuideDemo(quizTitle, sourceMaterial, hasMistakes, wrongAnswers);
+    }
+
+    const prompt = this.buildStudyGuidePrompt(quizTitle, sourceMaterial, targetPlayer, wrongAnswers, dto.lang);
+
+    let response;
+    try {
+      const stream = this.client!.messages.stream({
+        model: 'claude-sonnet-4-6',
+        // Study guides can be long — 8k tokens is enough for 4 detailed
+        // sections with quoted excerpts.
+        max_tokens: 8000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      response = await stream.finalMessage();
+    } catch (e) {
+      if (this.flagInvalidIfAuthError(e))
+        return this.buildStudyGuideDemo(quizTitle, sourceMaterial, hasMistakes, wrongAnswers);
+      throw e;
+    }
+
+    const textBlock = response.content.find((b) => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') throw new InternalServerErrorException('No response from AI');
+
+    const rawText = (textBlock.text as string)
+      .replace(/```(?:json)?\s*/gi, '')
+      .replace(/```$/g, '')
+      .trim();
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      this.logger.error(`studyGuide JSON parse failed. Raw: ${rawText.slice(0, 800)}`);
+      throw new InternalServerErrorException('AI returned malformed JSON — please try again.');
+    }
+
+    const shaped = this.shapeStudyGuide(parsed, !!sourceMaterial);
+    await this.log(
+      user.id,
+      `kahoot-study-guide:${sourceMaterial ? 'material' : 'generated'}`,
+      prompt,
+      JSON.stringify(shaped),
+    );
+    return shaped;
+  }
+
+  private buildStudyGuidePrompt(
+    quizTitle: string,
+    sourceMaterial: string | null,
+    player: any,
+    wrongAnswers: any[],
+    lang?: string,
+  ): string {
+    const langInstr = this.langInstructionFor(lang);
+
+    const wrongList = wrongAnswers.length
+      ? wrongAnswers
+          .map((a, i) => {
+            const pickedOpt = a.pickedIndex != null ? a.options[a.pickedIndex] : '(no answer)';
+            const correctOpt = a.options[a.correctIndex];
+            return `${i + 1}. Q: "${a.questionText}"\n   You picked: "${pickedOpt}"\n   Correct was: "${correctOpt}"`;
+          })
+          .join('\n\n')
+      : '(No mistakes — student got everything right.)';
+
+    if (sourceMaterial) {
+      return `${langInstr}You are a personal tutor writing a focused study guide for a student who just finished a class quiz. Use the LECTURE MATERIAL below as the primary source — anchor every section to a real excerpt from it. Speak directly to the student ("you missed", "your weak spot").
+
+QUIZ TITLE: ${quizTitle}
+STUDENT NAME: ${player.fullName}
+
+--- LECTURE MATERIAL START ---
+${sourceMaterial}
+--- LECTURE MATERIAL END ---
+
+THE STUDENT'S MISTAKES:
+${wrongList}
+
+Build a study guide with 2-4 sections, one per mistake (combine related mistakes into one section). Each section must include:
+  - title: short topic name
+  - sourceQuote: a SHORT (1-3 sentence) verbatim excerpt from the lecture material that covers this concept
+  - whyWrong: 1-2 sentences explaining why the student's wrong pick is wrong
+  - whyRight: 1-2 sentences explaining why the correct answer is right
+  - example: a fresh worked example (NOT from the material) that drills the same concept
+
+Also include a topLine summary (2-3 sentences) and a single mostImportant next action.
+
+Return ONLY valid JSON in this exact shape:
+{
+  "topLine": "summary paragraph",
+  "sections": [
+    { "title": "...", "sourceQuote": "...", "whyWrong": "...", "whyRight": "...", "example": "..." }
+  ],
+  "mostImportant": "single concrete next action"
+}
+
+No prose outside the JSON. No fences.`;
+    }
+
+    // No material → generate from scratch.
+    return `${langInstr}You are a personal tutor writing a focused study guide for a student who just finished a class quiz. The teacher did NOT upload lecture material, so you must generate the explanations from your own knowledge of the topics. Speak directly to the student.
+
+QUIZ TITLE: ${quizTitle}
+STUDENT NAME: ${player.fullName}
+
+THE STUDENT'S MISTAKES:
+${wrongList}
+
+Build a mini-lesson with 2-4 sections, one per mistake (combine related mistakes). Each section must include:
+  - title: short topic name
+  - lesson: 3-5 sentence explanation of the concept (this REPLACES the sourceQuote field)
+  - whyWrong: 1-2 sentences explaining why the student's wrong pick is wrong
+  - whyRight: 1-2 sentences explaining why the correct answer is right
+  - example: a worked example that drills the same concept
+
+Also include a topLine summary (2-3 sentences) and a single mostImportant next action.
+
+Return ONLY valid JSON in this exact shape:
+{
+  "topLine": "summary paragraph",
+  "sections": [
+    { "title": "...", "lesson": "...", "whyWrong": "...", "whyRight": "...", "example": "..." }
+  ],
+  "mostImportant": "single concrete next action"
+}
+
+No prose outside the JSON. No fences.`;
+  }
+
+  private buildStudyGuideDemo(
+    quizTitle: string,
+    sourceMaterial: string | null,
+    hasMistakes: boolean,
+    wrongAnswers: any[],
+  ) {
+    if (!hasMistakes) {
+      return {
+        _demo: true as const,
+        hasMaterial: !!sourceMaterial,
+        topLine: `[demo] You scored 100% on "${quizTitle}". Configure LLM_API_KEY for a real follow-up plan.`,
+        sections: [],
+        mostImportant: '[demo] Connect an LLM key for real analysis.',
+      };
+    }
+    return {
+      _demo: true as const,
+      hasMaterial: !!sourceMaterial,
+      topLine: `[demo] Study guide placeholder for "${quizTitle}". You missed ${wrongAnswers.length} question(s). Connect LLM_API_KEY to get real explanations.`,
+      sections: wrongAnswers.slice(0, 2).map((a: any, i: number) => ({
+        title: `[demo] Topic ${i + 1}`,
+        ...(sourceMaterial ? { sourceQuote: '[demo] excerpt from lecture' } : { lesson: '[demo] explanation' }),
+        whyWrong: `[demo] "${a.options[a.pickedIndex] ?? '?'}" is wrong because…`,
+        whyRight: `[demo] "${a.options[a.correctIndex]}" is right because…`,
+        example: '[demo] Try this example yourself.',
+      })),
+      mostImportant: '[demo] Configure LLM_API_KEY and re-fetch.',
+    };
+  }
+
+  private shapeStudyGuide(parsed: any, hasMaterial: boolean) {
+    const sections = Array.isArray(parsed?.sections)
+      ? parsed.sections
+          .filter((s: any) => typeof s?.title === 'string')
+          .map((s: any) => ({
+            title: String(s.title).trim(),
+            ...(hasMaterial
+              ? { sourceQuote: String(s.sourceQuote ?? '').trim() }
+              : { lesson: String(s.lesson ?? '').trim() }),
+            whyWrong: String(s.whyWrong ?? '').trim(),
+            whyRight: String(s.whyRight ?? '').trim(),
+            example: String(s.example ?? '').trim(),
+          }))
+      : [];
+    return {
+      hasMaterial,
+      topLine: String(parsed?.topLine ?? '').trim(),
+      sections,
+      mostImportant: String(parsed?.mostImportant ?? '').trim(),
     };
   }
 

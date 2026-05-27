@@ -965,6 +965,59 @@ export class TelegramUpdatesService implements OnModuleInit {
       return;
     }
 
+    // kahguide:<sessionId> — Personalized study guide. AI reads the
+    // teacher's uploaded material (or generates a mini-lesson if no
+    // material exists) and writes focused explanations for the
+    // student's missed questions. Delivered as a multi-section TG
+    // message — way smarter than dumping the whole 200-page PDF.
+    if (data.startsWith('kahguide:')) {
+      const sessionId = data.slice('kahguide:'.length);
+      const user = await this.findLinkedUser(ctx);
+      if (!user) {
+        await ctx.answerCallbackQuery({ text: 'Please /start first', show_alert: true });
+        return;
+      }
+      await ctx.answerCallbackQuery({ text: '📖 Building your study guide…' });
+      try {
+        if (!this.ai) throw new Error('AI unavailable');
+        const guide = await this.ai.kahootStudyGuide({ sessionId, studentId: user.id } as any, {
+          id: user.id,
+          role: user.role,
+        });
+        const lines: string[] = [];
+        lines.push('*📖 Your personalized study guide*', '');
+        if (guide.topLine) lines.push(guide.topLine, '');
+        for (const s of guide.sections || []) {
+          lines.push(`*${s.title}*`);
+          if (s.sourceQuote) lines.push(`📚 From your lecture:`, `_"${s.sourceQuote}"_`);
+          else if (s.lesson) lines.push(`💡 ${s.lesson}`);
+          if (s.whyWrong) lines.push(`❌ Why your pick was wrong: ${s.whyWrong}`);
+          if (s.whyRight) lines.push(`✅ Why the correct answer is right: ${s.whyRight}`);
+          if (s.example) lines.push(`🎯 Example: ${s.example}`);
+          lines.push('');
+        }
+        if (guide.mostImportant) lines.push(`*👉 Most important*`, guide.mostImportant);
+        if ((guide as any)._demo) lines.push('', '_(demo mode — connect LLM_API_KEY for real output)_');
+        if (ctx.chat) {
+          // TG cap is 4096 chars per message; chunk on paragraph
+          // boundaries so long guides don't fail to send.
+          const full = lines.join('\n');
+          const CHUNK = 3500;
+          if (full.length <= CHUNK) {
+            await ctx.api.sendMessage(ctx.chat.id, full);
+          } else {
+            for (let i = 0; i < full.length; i += CHUNK) {
+              await ctx.api.sendMessage(ctx.chat.id, full.slice(i, i + CHUNK));
+            }
+          }
+        }
+      } catch (e: any) {
+        if (ctx.chat)
+          await ctx.api.sendMessage(ctx.chat.id, `❌ Could not build study guide: ${e?.message ?? 'unknown error'}`);
+      }
+      return;
+    }
+
     // kahmat:<sessionId> — stream the quiz's stored source-material file
     // (PDF/DOCX/etc) back to the student as a Telegram document. No-op
     // with a friendly message if the teacher never uploaded one.

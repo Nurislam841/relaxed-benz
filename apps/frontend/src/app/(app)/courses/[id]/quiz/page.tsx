@@ -147,13 +147,17 @@ export default function QuizPage() {
       isPublished,
       secondsPerQuestion: 30,
       // Persist source-material on the quiz (Feature: TG "Get study
-      // material" button). Only included if the teacher uploaded a
-      // lecture file in this session.
+      // material" button + Personalized study guide). Only included
+      // if the teacher uploaded a lecture file in this session — both
+      // the raw file (key) and the extracted text are saved so the
+      // bot can stream the file AND the AI can read the text without
+      // re-parsing the PDF on every callback.
       ...(materialMeta?.materialKey
         ? {
             sourceMaterialKey: materialMeta.materialKey,
             sourceMaterialFileName: materialMeta.filename,
             sourceMaterialMime: materialMeta.materialMime,
+            sourceMaterialText: materialText,
           }
         : {}),
       questions: editable.map((q) => ({

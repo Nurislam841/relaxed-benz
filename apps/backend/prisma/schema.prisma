@@ -407,6 +407,11 @@ model Quiz {
   sourceMaterialKey       String? @map("source_material_key")
   sourceMaterialFileName  String? @map("source_material_file_name")
   sourceMaterialMime      String? @map("source_material_mime")
+  // Extracted plaintext from the source material. Stored so the
+  // Personalized Study Guide endpoint can feed it to Claude without
+  // re-parsing the PDF/DOCX on every callback. Capped at 200KB at
+  // upload time (see material-extractor.MAX_EXTRACTED_CHARS).
+  sourceMaterialText      String? @map("source_material_text") @db.Text
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
   deletedAt       DateTime?      @map("deleted_at")

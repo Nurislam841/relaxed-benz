@@ -57,6 +57,7 @@ export class QuizService {
           sourceMaterialKey: dto.sourceMaterialKey ?? null,
           sourceMaterialFileName: dto.sourceMaterialFileName ?? null,
           sourceMaterialMime: dto.sourceMaterialMime ?? null,
+          sourceMaterialText: dto.sourceMaterialText ?? null,
         },
       });
       await tx.quizQuestion.createMany({

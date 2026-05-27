@@ -379,24 +379,27 @@ export class KahootGateway implements OnGatewayConnection, OnGatewayDisconnect {
             .map((b: any, i: number) => `${i + 1}\\. ${b.fullName} — ${b.score}`)
             .join('\n')}`
         : '🏁 *Game over!*';
-      // Three buttons:
-      //   1. View results — opens the student-facing web page.
-      //   2. Get AI plan — fires kahplan callback → AI generates plan,
-      //      sent back as a TG message (lazy: tokens spent only when
-      //      the student actually wants the plan).
-      //   3. Get study material — fires kahmat callback → bot streams
-      //      the teacher-uploaded lecture file as a TG document.
+      // Four buttons:
+      //   1. View results — student-facing web page (per-Q review).
+      //   2. Get AI plan — short strengths/gaps/nextStep summary.
+      //   3. Personalized study guide — long focused guide with
+      //      lecture excerpts + why-wrong + why-right + examples.
+      //      Auto-falls-back to AI-generated mini-lesson if the quiz
+      //      has no uploaded material.
+      //   4. Full material — raw PDF/DOCX file (only useful for
+      //      students who want the entire lecture, not just the
+      //      relevant excerpts).
       //
-      // The URL button is dropped on http://localhost dev (Telegram
-      // refuses non-https URLs); the two callback_data buttons always
-      // work because they don't carry a URL.
+      // URL button is dropped on http://localhost dev (TG refuses
+      // non-https). callback_data buttons always work.
       const myUrl = baseUrl ? `${baseUrl}/kahoot/me/${sessionId}/results` : '';
       const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
       if (isTelegramSafeUrl(myUrl)) {
         buttons.push([{ text: '📊 View my results', url: myUrl }]);
       }
       buttons.push([{ text: '🧠 Get my AI plan', callback_data: `kahplan:${sessionId}` }]);
-      buttons.push([{ text: '📚 Get study material', callback_data: `kahmat:${sessionId}` }]);
+      buttons.push([{ text: '📖 Personalized study guide', callback_data: `kahguide:${sessionId}` }]);
+      buttons.push([{ text: '📚 Full material (raw file)', callback_data: `kahmat:${sessionId}` }]);
       try {
         await this.telegram.sendMessageWithButtons(r.chatId, text, buttons);
       } catch (e: any) {
