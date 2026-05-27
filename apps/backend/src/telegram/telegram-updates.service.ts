@@ -1031,15 +1031,37 @@ export class TelegramUpdatesService implements OnModuleInit {
           },
         });
         const quiz = session?.quiz;
-        if (!quiz?.sourceMaterialKey) {
+        // Detailed diagnostic — three distinct null states give three
+        // distinct messages so we can tell which step lost the material
+        // when a user reports "I uploaded a PDF but nothing came back".
+        this.logger.log(
+          `[kahmat] sessionId=${sessionId} sourceMaterialKey=${quiz?.sourceMaterialKey ?? 'null'} ` +
+            `fileName=${quiz?.sourceMaterialFileName ?? 'null'}`,
+        );
+        if (!quiz) {
+          if (ctx.chat) await ctx.api.sendMessage(ctx.chat.id, '❌ Session not found.');
+          return;
+        }
+        if (!quiz.sourceMaterialKey) {
+          // Either: (a) teacher never uploaded material, OR (b) they
+          // uploaded but the file didn't reach the persist step. The
+          // log line above tells us which on Render.
           if (ctx.chat) {
-            await ctx.api.sendMessage(ctx.chat.id, 'ℹ️ The teacher did not attach study material to this quiz.');
+            await ctx.api.sendMessage(
+              ctx.chat.id,
+              'ℹ️ This quiz has no study material attached. The teacher can re-create the quiz after uploading a lecture file in Quiz Studio.',
+            );
           }
           return;
         }
         const buffer = await this.storage.readKey(quiz.sourceMaterialKey);
         if (!buffer) {
-          if (ctx.chat) await ctx.api.sendMessage(ctx.chat.id, '❌ Material file is missing on the server.');
+          this.logger.warn(`[kahmat] storage.readKey returned null for key="${quiz.sourceMaterialKey}"`);
+          if (ctx.chat)
+            await ctx.api.sendMessage(
+              ctx.chat.id,
+              `❌ Material file was saved (key=${quiz.sourceMaterialKey.slice(0, 24)}…) but the bytes aren't readable from storage — likely an S3 permission issue.`,
+            );
           return;
         }
         if (ctx.chat) {

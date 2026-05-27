@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import {
@@ -15,6 +15,8 @@ type AuthUser = { id: string; role: Role };
 
 @Injectable()
 export class QuizService {
+  private readonly logger = new Logger(QuizService.name);
+
   constructor(
     private db: PrismaService,
     private activityLog: ActivityLogService,
@@ -37,6 +39,14 @@ export class QuizService {
 
   async create(courseId: string, dto: CreateQuizDto, user: AuthUser) {
     await this.ensureTeacherOfCourse(user.id, user.role, courseId);
+
+    // Diagnostic — surface whether the create payload carries study
+    // material so we can debug "Full material button says nothing
+    // attached" reports without DB access.
+    this.logger.log(
+      `[quiz.create] title="${dto.title}" sourceMaterialKey=${dto.sourceMaterialKey ?? 'null'} ` +
+        `materialTextLen=${dto.sourceMaterialText?.length ?? 0}`,
+    );
 
     for (const [i, q] of dto.questions.entries()) {
       if (q.correctIndex < 0 || q.correctIndex >= q.options.length) {
