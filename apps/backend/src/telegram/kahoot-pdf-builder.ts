@@ -23,6 +23,58 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import PDFDocument = require('pdfkit');
+import { Logger } from '@nestjs/common';
+
+const logger = new Logger('KahootPdfBuilder');
+
+/**
+ * Resolve DejaVu Sans TTF files shipped by the `dejavu-fonts-ttf` npm
+ * package. DejaVu covers Latin + full Cyrillic + Kazakh-specific
+ * letters (ә, ң, қ, ө, ұ, ү, һ) — without this PDFKit's built-in
+ * Helvetica replaces Cyrillic glyphs with empty squares.
+ *
+ * Resolved lazily because Node's module loader on Render can choke
+ * on absolute paths if the file is missing for some reason; we'd
+ * rather fall back to Helvetica than crash the bot callback.
+ */
+function resolveDejaVuFont(variant: 'Regular' | 'Bold' | 'Oblique'): string | null {
+  const file = variant === 'Regular' ? 'DejaVuSans.ttf' : `DejaVuSans-${variant}.ttf`;
+  try {
+    return require.resolve(`dejavu-fonts-ttf/ttf/${file}`);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Register the Unicode fonts on a pdfkit document. Returns the font
+ * names to use; if registration fails (e.g., package missing) we
+ * fall back to the base-14 Helvetica family. Cyrillic text will look
+ * wrong in the fallback but the bot doesn't crash.
+ */
+function registerFonts(doc: PDFKit.PDFDocument): {
+  regular: string;
+  bold: string;
+  italic: string;
+  unicode: boolean;
+} {
+  const regular = resolveDejaVuFont('Regular');
+  const bold = resolveDejaVuFont('Bold');
+  const italic = resolveDejaVuFont('Oblique');
+  if (regular && bold && italic) {
+    try {
+      doc.registerFont('Sans', regular);
+      doc.registerFont('Sans-Bold', bold);
+      doc.registerFont('Sans-Italic', italic);
+      return { regular: 'Sans', bold: 'Sans-Bold', italic: 'Sans-Italic', unicode: true };
+    } catch (e: any) {
+      logger.warn(`Failed to register DejaVu fonts: ${e?.message ?? e}. Falling back to Helvetica (no Cyrillic).`);
+    }
+  } else {
+    logger.warn('DejaVu Sans TTFs not found in node_modules — Cyrillic text in PDFs will be unreadable.');
+  }
+  return { regular: 'Helvetica', bold: 'Helvetica-Bold', italic: 'Helvetica-Oblique', unicode: false };
+}
 
 interface AiPlanShape {
   summary?: string;
@@ -63,29 +115,31 @@ function streamToBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   });
 }
 
+type Fonts = ReturnType<typeof registerFonts>;
+
 /** Common header used by both documents. */
-function writeHeader(doc: PDFKit.PDFDocument, title: string, subtitle: string) {
-  doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(20).text(title, { align: 'left' });
+function writeHeader(doc: PDFKit.PDFDocument, fonts: Fonts, title: string, subtitle: string) {
+  doc.fillColor('#0f172a').font(fonts.bold).fontSize(20).text(title, { align: 'left' });
   doc.moveDown(0.25);
-  doc.fillColor('#475569').font('Helvetica').fontSize(11).text(subtitle, { align: 'left' });
+  doc.fillColor('#475569').font(fonts.regular).fontSize(11).text(subtitle, { align: 'left' });
   // Underline bar — gives the document a printed-handout feel.
   const y = doc.y + 6;
   doc.strokeColor('#facc15').lineWidth(2).moveTo(50, y).lineTo(560, y).stroke();
   doc.moveDown(1);
 }
 
-function writeSectionLabel(doc: PDFKit.PDFDocument, label: string) {
-  doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(13).text(label.toUpperCase(), { characterSpacing: 0.5 });
+function writeSectionLabel(doc: PDFKit.PDFDocument, fonts: Fonts, label: string) {
+  doc.fillColor('#0f172a').font(fonts.bold).fontSize(13).text(label.toUpperCase(), { characterSpacing: 0.5 });
   doc.moveDown(0.25);
 }
 
-function writeBody(doc: PDFKit.PDFDocument, text: string) {
-  doc.fillColor('#1e293b').font('Helvetica').fontSize(11).text(text, { align: 'left', lineGap: 2 });
+function writeBody(doc: PDFKit.PDFDocument, fonts: Fonts, text: string) {
+  doc.fillColor('#1e293b').font(fonts.regular).fontSize(11).text(text, { align: 'left', lineGap: 2 });
   doc.moveDown(0.5);
 }
 
-function writeBullets(doc: PDFKit.PDFDocument, items: string[]) {
-  doc.fillColor('#1e293b').font('Helvetica').fontSize(11);
+function writeBullets(doc: PDFKit.PDFDocument, fonts: Fonts, items: string[]) {
+  doc.fillColor('#1e293b').font(fonts.regular).fontSize(11);
   for (const item of items) {
     doc.text(`• ${item}`, { indent: 12, lineGap: 2 });
     doc.moveDown(0.1);
@@ -103,47 +157,37 @@ function writeBullets(doc: PDFKit.PDFDocument, items: string[]) {
 export async function buildAiPlanPdf(plan: AiPlanShape, studentName: string, quizTitle: string): Promise<Buffer> {
   const doc = new PDFDocument({ size: 'A4', margins: { top: 50, left: 50, right: 50, bottom: 50 } });
   const buffer = streamToBuffer(doc);
+  const fonts = registerFonts(doc);
 
-  writeHeader(doc, 'Personal AI study plan', `${studentName} — ${quizTitle}`);
+  writeHeader(doc, fonts, 'Personal AI study plan', `${studentName} — ${quizTitle}`);
 
   if (plan.summary) {
-    writeBody(doc, plan.summary);
+    writeBody(doc, fonts, plan.summary);
   }
 
   if (plan.strengths && plan.strengths.length) {
-    writeSectionLabel(doc, 'Strengths');
-    writeBullets(doc, plan.strengths);
+    writeSectionLabel(doc, fonts, 'Strengths');
+    writeBullets(doc, fonts, plan.strengths);
   }
   if (plan.gaps && plan.gaps.length) {
-    writeSectionLabel(doc, 'Gaps to close');
-    writeBullets(doc, plan.gaps);
+    writeSectionLabel(doc, fonts, 'Gaps to close');
+    writeBullets(doc, fonts, plan.gaps);
   }
 
   if (plan.nextStep) {
-    writeSectionLabel(doc, 'Most important next step');
-    // Highlighted box — drawn manually because pdfkit has no built-in.
+    writeSectionLabel(doc, fonts, 'Most important next step');
+    // Highlighted box — measure text height first, then paint the rect
+    // behind it. Single-pass to avoid the double-render flicker.
     const startY = doc.y;
+    doc.font(fonts.bold).fontSize(11);
+    const height = doc.heightOfString(plan.nextStep, { width: 498, lineGap: 3 });
     doc
       .save()
       .fillColor('#fef3c7')
-      .rect(50, startY - 4, 510, 0)
+      .rect(50, startY - 4, 510, height + 8)
       .fill()
       .restore();
-    doc.fillColor('#92400e').font('Helvetica-Bold').fontSize(11).text(plan.nextStep, 56, startY, {
-      width: 498,
-      lineGap: 3,
-    });
-    // Re-draw the rect with the correct height now that the text wrapped.
-    const endY = doc.y;
-    doc
-      .save()
-      .fillColor('#fef3c7')
-      .rect(50, startY - 4, 510, endY - startY + 8)
-      .fillOpacity(0.5)
-      .fill()
-      .restore();
-    // Print the text again on top (the fill obscured it).
-    doc.fillColor('#92400e').font('Helvetica-Bold').fontSize(11).text(plan.nextStep, 56, startY, {
+    doc.fillColor('#92400e').font(fonts.bold).fontSize(11).text(plan.nextStep, 56, startY, {
       width: 498,
       lineGap: 3,
     });
@@ -151,7 +195,7 @@ export async function buildAiPlanPdf(plan: AiPlanShape, studentName: string, qui
   }
 
   if (plan._demo) {
-    doc.fillColor('#94a3b8').font('Helvetica-Oblique').fontSize(9).text('Demo mode — LLM_API_KEY not configured.', {
+    doc.fillColor('#94a3b8').font(fonts.italic).fontSize(9).text('Demo mode — LLM_API_KEY not configured.', {
       align: 'right',
     });
   }
@@ -171,11 +215,12 @@ export async function buildStudyGuidePdf(
 ): Promise<Buffer> {
   const doc = new PDFDocument({ size: 'A4', margins: { top: 50, left: 50, right: 50, bottom: 50 } });
   const buffer = streamToBuffer(doc);
+  const fonts = registerFonts(doc);
 
-  writeHeader(doc, 'Personalized study guide', `${studentName} — ${quizTitle}`);
+  writeHeader(doc, fonts, 'Personalized study guide', `${studentName} — ${quizTitle}`);
 
   if (guide.topLine) {
-    writeBody(doc, guide.topLine);
+    writeBody(doc, fonts, guide.topLine);
   }
 
   for (let i = 0; i < (guide.sections ?? []).length; i++) {
@@ -183,17 +228,17 @@ export async function buildStudyGuidePdf(
     // Section title with index
     doc
       .fillColor('#0f172a')
-      .font('Helvetica-Bold')
+      .font(fonts.bold)
       .fontSize(14)
       .text(`${i + 1}. ${s.title}`);
     doc.moveDown(0.4);
 
     // From the lecture (if material) OR a generated lesson (if not).
     if (s.sourceQuote) {
-      writeSectionLabel(doc, 'From your lecture');
+      writeSectionLabel(doc, fonts, 'From your lecture');
       // Quote block — italic + left bar.
       const startY = doc.y;
-      doc.fillColor('#475569').font('Helvetica-Oblique').fontSize(11).text(`"${s.sourceQuote}"`, 60, startY, {
+      doc.fillColor('#475569').font(fonts.italic).fontSize(11).text(`"${s.sourceQuote}"`, 60, startY, {
         width: 490,
         lineGap: 2,
       });
@@ -201,36 +246,36 @@ export async function buildStudyGuidePdf(
       doc.save().strokeColor('#facc15').lineWidth(3).moveTo(50, startY).lineTo(50, endY).stroke().restore();
       doc.moveDown(0.6);
     } else if (s.lesson) {
-      writeSectionLabel(doc, 'Concept');
-      writeBody(doc, s.lesson);
+      writeSectionLabel(doc, fonts, 'Concept');
+      writeBody(doc, fonts, s.lesson);
     }
 
     if (s.whyWrong) {
-      doc.fillColor('#b91c1c').font('Helvetica-Bold').fontSize(11).text('Why your pick was wrong');
+      doc.fillColor('#b91c1c').font(fonts.bold).fontSize(11).text('Why your pick was wrong');
       doc.moveDown(0.15);
-      writeBody(doc, s.whyWrong);
+      writeBody(doc, fonts, s.whyWrong);
     }
     if (s.whyRight) {
-      doc.fillColor('#15803d').font('Helvetica-Bold').fontSize(11).text('Why the correct answer is right');
+      doc.fillColor('#15803d').font(fonts.bold).fontSize(11).text('Why the correct answer is right');
       doc.moveDown(0.15);
-      writeBody(doc, s.whyRight);
+      writeBody(doc, fonts, s.whyRight);
     }
     if (s.example) {
-      doc.fillColor('#7c3aed').font('Helvetica-Bold').fontSize(11).text('Try this');
+      doc.fillColor('#7c3aed').font(fonts.bold).fontSize(11).text('Try this');
       doc.moveDown(0.15);
-      writeBody(doc, s.example);
+      writeBody(doc, fonts, s.example);
     }
 
     doc.moveDown(0.5);
   }
 
   if (guide.mostImportant) {
-    writeSectionLabel(doc, 'Most important next step');
-    writeBody(doc, guide.mostImportant);
+    writeSectionLabel(doc, fonts, 'Most important next step');
+    writeBody(doc, fonts, guide.mostImportant);
   }
 
   if (guide._demo) {
-    doc.fillColor('#94a3b8').font('Helvetica-Oblique').fontSize(9).text('Demo mode — LLM_API_KEY not configured.', {
+    doc.fillColor('#94a3b8').font(fonts.italic).fontSize(9).text('Demo mode — LLM_API_KEY not configured.', {
       align: 'right',
     });
   }

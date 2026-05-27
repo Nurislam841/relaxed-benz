@@ -29,6 +29,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.1053.0
         version: 3.1053.0
+      '@fontsource/noto-sans':
+        specifier: ^5.2.10
+        version: 5.2.10
       '@nestjs/common':
         specifier: ^10.3.0
         version: 10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -77,6 +80,9 @@ importers:
       cookie-parser:
         specifier: ^1.4.6
         version: 1.4.7
+      dejavu-fonts-ttf:
+        specifier: ^2.37.3
+        version: 2.37.3
       dotenv:
         specifier: ^17.3.1
         version: 17.3.1
@@ -808,6 +814,9 @@ packages:
   '@eslint/js@8.57.1':
     resolution: {integrity: sha512-d9zaMRSTIKDLhctzH12MtXvJKSSUhaHcjV+2Z+GK+EEY7XKpP5yR4x+N3TAcHTcu963nIr+TMcCb4DBCYX1z6Q==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
+
+  '@fontsource/noto-sans@5.2.10':
+    resolution: {integrity: sha512-J58RVfS/C0Z2VBF+PoU260Tx8cdRGYuS+e3yQe4hYaIYDl0sEVn5CzlLo5zVRvQD0HaIUTV8AZMfqR7rtdEpqQ==}
 
   '@grammyjs/types@3.27.3':
     resolution: {integrity: sha512-yUKMLliGsGbnxu96YUJ7km7B0zy4PzeH/Jvti5705R/LeKDMqkDV4DckMSt+OrliWQpTwQljHE0QLol5zgxBkg==}
@@ -2521,6 +2530,9 @@ packages:
   define-properties@1.2.1:
     resolution: {integrity: sha512-8QmQKqEASLd5nx0U1B1okLElbUuuttJ/AnYmRXbbbGDWh6uS208EjD4Xqq/I9wK7u0v6O08XhTWnt5XtEbR6Dg==}
     engines: {node: '>= 0.4'}
+
+  dejavu-fonts-ttf@2.37.3:
+    resolution: {integrity: sha512-f1hd7jJbeQa1VWcw+K2KrTXS50zTMaHpVC4XIKJpNcDeYR5ajMtj/iLlQDYNvLOKamUB3ARVVCf79lNwNVztSQ==}
 
   delayed-stream@1.0.0:
     resolution: {integrity: sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==}
@@ -6131,6 +6143,8 @@ snapshots:
 
   '@eslint/js@8.57.1': {}
 
+  '@fontsource/noto-sans@5.2.10': {}
+
   '@grammyjs/types@3.27.3': {}
 
   '@humanwhocodes/config-array@0.13.0':
@@ -8027,6 +8041,8 @@ snapshots:
       define-data-property: 1.1.4
       has-property-descriptors: 1.0.2
       object-keys: 1.1.1
+
+  dejavu-fonts-ttf@2.37.3: {}
 
   delayed-stream@1.0.0: {}
 

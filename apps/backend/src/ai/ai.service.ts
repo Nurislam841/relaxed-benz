@@ -708,6 +708,28 @@ No prose, no fences.`;
     return '';
   }
 
+  /**
+   * Heuristic language detector — picks up the dominant script from any
+   * text blob (quiz title, question, lecture material). Used to keep
+   * AI plan + study guide in the same language the teacher's content
+   * is in, so a student who got a Russian quiz doesn't read an English
+   * plan about it.
+   *
+   *   - Kazakh-specific letters (ә, ң, қ, ө, ұ, ү, h) → 'kz'
+   *   - Other Cyrillic → 'ru'
+   *   - Otherwise → undefined (caller falls back to dto.lang or 'en')
+   *
+   * Returning undefined for ambiguous Latin/empty input on purpose;
+   * the caller can then defer to whatever explicit `lang` flag the
+   * frontend or Telegram callback passed in.
+   */
+  private detectLangFromText(text: string | null | undefined): 'ru' | 'kz' | undefined {
+    if (!text) return undefined;
+    if (/[әӘғҒқҚңҢөӨұҰүҮһҺ]/.test(text)) return 'kz';
+    if (/[Ѐ-ӿ]/.test(text)) return 'ru';
+    return undefined;
+  }
+
   /** Demo-mode placeholders, marked so teachers know AI isn't configured. */
   private buildAssistDemo(dto: QuizAssistDto) {
     if (dto.action === 'improve-question') {
@@ -766,6 +788,29 @@ No prose, no fences.`;
 
     if (scope === 'student' && !dto.studentId) {
       throw new BadRequestException('studentId is required when scope=student');
+    }
+
+    // Auto-detect lang from the quiz's content (title + source material).
+    // The caller's explicit dto.lang wins if provided; otherwise we follow
+    // whatever the teacher's content is in, so a Russian quiz doesn't
+    // produce an English analysis.
+    if (!dto.lang) {
+      const sample = await this.db.quizSession
+        .findUnique({
+          where: { id: dto.sessionId },
+          select: {
+            quiz: {
+              select: { title: true, sourceMaterialText: true, questions: { take: 1, select: { question: true } } },
+            },
+          },
+        })
+        .then((s) => s?.quiz)
+        .catch(() => null);
+      const detected =
+        this.detectLangFromText(sample?.sourceMaterialText) ||
+        this.detectLangFromText(sample?.questions?.[0]?.question) ||
+        this.detectLangFromText(sample?.title);
+      if (detected) dto = { ...dto, lang: detected };
     }
 
     /**
@@ -999,10 +1044,29 @@ No prose outside the JSON, no fences.`;
     // one query so we don't double-fetch.
     const session = await this.db.quizSession.findUnique({
       where: { id: dto.sessionId },
-      include: { quiz: { select: { sourceMaterialText: true, title: true } } },
+      include: {
+        quiz: {
+          select: {
+            sourceMaterialText: true,
+            title: true,
+            questions: { take: 1, select: { question: true } },
+          },
+        },
+      },
     });
     const sourceMaterial = session?.quiz?.sourceMaterialText ?? null;
     const quizTitle = session?.quiz?.title ?? 'this quiz';
+
+    // Auto-detect language same as kahootInsights — material wins,
+    // then quiz questions, then title. Explicit dto.lang from the
+    // frontend overrides everything.
+    if (!dto.lang) {
+      const detected =
+        this.detectLangFromText(sourceMaterial) ||
+        this.detectLangFromText(session?.quiz?.questions?.[0]?.question) ||
+        this.detectLangFromText(quizTitle);
+      if (detected) dto = { ...dto, lang: detected };
+    }
 
     // Get the player's data via the same auth-aware path as
     // kahoot-insights. Self-lookup goes through getMyResults, anyone
