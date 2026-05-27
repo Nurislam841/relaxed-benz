@@ -17,6 +17,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiConsumes } from '
 import { Response } from 'express';
 import { AiService } from './ai.service';
 import { extractMaterialText } from './material-extractor';
+import { StorageService } from '../storage/storage.service';
 import {
   AssignmentFeedbackDto,
   GenerateQuizDto,
@@ -37,7 +38,10 @@ import { Role } from '@prisma/client';
 @UseGuards(AuthGuard('jwt'))
 @Controller('ai')
 export class AiController {
-  constructor(private svc: AiService) {}
+  constructor(
+    private svc: AiService,
+    private storage: StorageService,
+  ) {}
 
   @Get('status')
   @ApiOperation({
@@ -150,7 +154,18 @@ export class AiController {
     if (user.role === Role.STUDENT) {
       throw new ForbiddenException('Only teachers and admins can upload lecture material');
     }
-    return extractMaterialText(file);
+    const extracted = await extractMaterialText(file);
+    // Persist the raw file too so end-of-game Telegram fan-out can later
+    // deliver it to students via the "Get study material" inline button.
+    // Saved to S3 (or disk in dev) via the shared StorageService — same
+    // path used for assignment submissions.
+    const stored = await this.storage.upload(file.buffer, file.originalname, file.mimetype);
+    return {
+      ...extracted,
+      materialKey: stored.key,
+      materialFileName: file.originalname,
+      materialMime: file.mimetype,
+    };
   }
 
   @Post('course-summary')

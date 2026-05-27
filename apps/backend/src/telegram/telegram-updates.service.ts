@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit, Optional, forwardRef, Inject } from '@nestjs/common';
 import type { Context } from 'grammy';
-import { InlineKeyboard } from 'grammy';
+import { InlineKeyboard, InputFile } from 'grammy';
 import { JwtService } from '@nestjs/jwt';
 import { Role } from '@prisma/client';
 import { TelegramService } from './telegram.service';
@@ -10,6 +10,7 @@ import { ScheduleService } from '../schedule/schedule.service';
 import { GradesService } from '../grades/grades.service';
 import { AssignmentsService } from '../assignments/assignments.service';
 import { KahootService } from '../kahoot/kahoot.service';
+import { StorageService } from '../storage/storage.service';
 import { getBackendPublicUrl, getFrontendUrl, getUserFacingBaseUrl } from '../common/public-url';
 import { t, normaliseLang, BOT_LANGS, type BotLang } from './bot-i18n';
 
@@ -46,6 +47,7 @@ export class TelegramUpdatesService implements OnModuleInit {
     private readonly tg: TelegramService,
     private readonly db: PrismaService,
     private readonly jwt: JwtService,
+    private readonly storage: StorageService,
     @Optional() @Inject(forwardRef(() => AiService)) private readonly ai: AiService,
     @Optional() private readonly schedule: ScheduleService,
     @Optional() private readonly grades: GradesService,
@@ -927,6 +929,88 @@ export class TelegramUpdatesService implements OnModuleInit {
         if (ctx.chat) await ctx.api.sendMessage(ctx.chat.id, lines.join('\n'));
       } catch (e) {
         if (ctx.chat) await ctx.api.sendMessage(ctx.chat.id, '❌ Could not generate feedback.');
+      }
+      return;
+    }
+
+    // kahplan:<sessionId> — generate AI personal plan for this user
+    // based on their answers in the Kahoot session, send as a TG message.
+    if (data.startsWith('kahplan:')) {
+      const sessionId = data.slice('kahplan:'.length);
+      const user = await this.findLinkedUser(ctx);
+      if (!user) {
+        await ctx.answerCallbackQuery({ text: 'Please /start first', show_alert: true });
+        return;
+      }
+      await ctx.answerCallbackQuery({ text: '🧠 Thinking…' });
+      try {
+        if (!this.ai) throw new Error('AI unavailable');
+        const plan = await this.ai.kahootInsights({ sessionId, scope: 'student', studentId: user.id } as any, {
+          id: user.id,
+          role: user.role,
+        });
+        const lines: string[] = ['*🧠 Your AI study plan*', '', plan.summary || '', ''];
+        if (Array.isArray(plan.strengths) && plan.strengths.length) {
+          lines.push('*Strengths*', ...plan.strengths.slice(0, 3).map((s: string) => `✅ ${s}`), '');
+        }
+        if (Array.isArray(plan.gaps) && plan.gaps.length) {
+          lines.push('*Gaps to close*', ...plan.gaps.slice(0, 3).map((g: string) => `🔧 ${g}`), '');
+        }
+        if (plan.nextStep) lines.push('*Next step*', `➡️ ${plan.nextStep}`);
+        if (ctx.chat) await ctx.api.sendMessage(ctx.chat.id, lines.join('\n'));
+      } catch (e: any) {
+        if (ctx.chat)
+          await ctx.api.sendMessage(ctx.chat.id, `❌ Could not generate plan: ${e?.message ?? 'unknown error'}`);
+      }
+      return;
+    }
+
+    // kahmat:<sessionId> — stream the quiz's stored source-material file
+    // (PDF/DOCX/etc) back to the student as a Telegram document. No-op
+    // with a friendly message if the teacher never uploaded one.
+    if (data.startsWith('kahmat:')) {
+      const sessionId = data.slice('kahmat:'.length);
+      const user = await this.findLinkedUser(ctx);
+      if (!user) {
+        await ctx.answerCallbackQuery({ text: 'Please /start first', show_alert: true });
+        return;
+      }
+      await ctx.answerCallbackQuery({ text: '📚 Fetching material…' });
+      try {
+        const session = await this.db.quizSession.findUnique({
+          where: { id: sessionId },
+          select: {
+            quiz: {
+              select: {
+                sourceMaterialKey: true,
+                sourceMaterialFileName: true,
+                sourceMaterialMime: true,
+              },
+            },
+          },
+        });
+        const quiz = session?.quiz;
+        if (!quiz?.sourceMaterialKey) {
+          if (ctx.chat) {
+            await ctx.api.sendMessage(ctx.chat.id, 'ℹ️ The teacher did not attach study material to this quiz.');
+          }
+          return;
+        }
+        const buffer = await this.storage.readKey(quiz.sourceMaterialKey);
+        if (!buffer) {
+          if (ctx.chat) await ctx.api.sendMessage(ctx.chat.id, '❌ Material file is missing on the server.');
+          return;
+        }
+        if (ctx.chat) {
+          await ctx.api.sendDocument(
+            ctx.chat.id,
+            new InputFile(buffer, quiz.sourceMaterialFileName ?? 'study-material'),
+            { caption: '📚 Study this — same lecture the teacher used to build the quiz.' },
+          );
+        }
+      } catch (e: any) {
+        if (ctx.chat)
+          await ctx.api.sendMessage(ctx.chat.id, `❌ Could not send material: ${e?.message ?? 'unknown error'}`);
       }
       return;
     }

@@ -97,6 +97,10 @@ export default function QuizPage() {
     rawCharCount: number;
     truncated: boolean;
     kind: 'pdf' | 'docx' | 'text';
+    // Persisted on the quiz so end-of-game Telegram can stream the
+    // raw file back to students via the "Get study material" button.
+    materialKey?: string;
+    materialMime?: string;
   } | null>(null);
   const [uploadingMaterial, setUploadingMaterial] = useState(false);
   const materialFileRef = useRef<HTMLInputElement>(null);
@@ -142,6 +146,16 @@ export default function QuizPage() {
       source: 'AI_GENERATED' as const,
       isPublished,
       secondsPerQuestion: 30,
+      // Persist source-material on the quiz (Feature: TG "Get study
+      // material" button). Only included if the teacher uploaded a
+      // lecture file in this session.
+      ...(materialMeta?.materialKey
+        ? {
+            sourceMaterialKey: materialMeta.materialKey,
+            sourceMaterialFileName: materialMeta.filename,
+            sourceMaterialMime: materialMeta.materialMime,
+          }
+        : {}),
       questions: editable.map((q) => ({
         question: q.question,
         options: q.options,
@@ -254,6 +268,9 @@ export default function QuizPage() {
         rawCharCount: number;
         truncated: boolean;
         kind: 'pdf' | 'docx' | 'text';
+        materialKey?: string;
+        materialFileName?: string;
+        materialMime?: string;
       };
       setMaterialText(data.text);
       setMaterialMeta({
@@ -261,6 +278,8 @@ export default function QuizPage() {
         rawCharCount: data.rawCharCount,
         truncated: data.truncated,
         kind: data.kind,
+        materialKey: data.materialKey,
+        materialMime: data.materialMime,
       });
       toast({
         title: 'Material loaded',

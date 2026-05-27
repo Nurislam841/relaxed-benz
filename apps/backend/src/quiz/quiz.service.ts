@@ -54,6 +54,9 @@ export class QuizService {
           source: dto.source ?? QuizSource.MANUAL,
           isPublished: dto.isPublished ?? false,
           secondsPerQuestion: dto.secondsPerQuestion ?? 30,
+          sourceMaterialKey: dto.sourceMaterialKey ?? null,
+          sourceMaterialFileName: dto.sourceMaterialFileName ?? null,
+          sourceMaterialMime: dto.sourceMaterialMime ?? null,
         },
       });
       await tx.quizQuestion.createMany({

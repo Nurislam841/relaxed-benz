@@ -379,17 +379,26 @@ export class KahootGateway implements OnGatewayConnection, OnGatewayDisconnect {
             .map((b: any, i: number) => `${i + 1}\\. ${b.fullName} — ${b.score}`)
             .join('\n')}`
         : '🏁 *Game over!*';
-      // Student-facing URL — see Feature #4 page in apps/frontend.
+      // Three buttons:
+      //   1. View results — opens the student-facing web page.
+      //   2. Get AI plan — fires kahplan callback → AI generates plan,
+      //      sent back as a TG message (lazy: tokens spent only when
+      //      the student actually wants the plan).
+      //   3. Get study material — fires kahmat callback → bot streams
+      //      the teacher-uploaded lecture file as a TG document.
+      //
+      // The URL button is dropped on http://localhost dev (Telegram
+      // refuses non-https URLs); the two callback_data buttons always
+      // work because they don't carry a URL.
       const myUrl = baseUrl ? `${baseUrl}/kahoot/me/${sessionId}/results` : '';
+      const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
+      if (isTelegramSafeUrl(myUrl)) {
+        buttons.push([{ text: '📊 View my results', url: myUrl }]);
+      }
+      buttons.push([{ text: '🧠 Get my AI plan', callback_data: `kahplan:${sessionId}` }]);
+      buttons.push([{ text: '📚 Get study material', callback_data: `kahmat:${sessionId}` }]);
       try {
-        if (isTelegramSafeUrl(myUrl)) {
-          await this.telegram.sendMessageWithButtons(r.chatId, text, [
-            [{ text: '📊 My results + AI plan', url: myUrl }],
-          ]);
-        } else {
-          // Local dev with http://localhost — Telegram rejects the URL.
-          await this.telegram.sendMessage(r.chatId, text);
-        }
+        await this.telegram.sendMessageWithButtons(r.chatId, text, buttons);
       } catch (e: any) {
         // One bad recipient (e.g. blocked the bot) shouldn't drop the
         // rest of the room's notifications.

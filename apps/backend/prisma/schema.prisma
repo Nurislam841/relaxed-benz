@@ -399,6 +399,14 @@ model Quiz {
   source          QuizSource     @default(MANUAL)
   isPublished     Boolean        @default(false) @map("is_published")
   secondsPerQuestion Int         @default(30) @map("seconds_per_question")
+  // Optional source-material attachment (Feature: end-of-game TG
+  // "Get study material" button). Stored as a StorageService key so
+  // the bot can stream the file to Telegram via sendDocument.
+  // All three null unless the teacher uploaded a lecture file when
+  // generating the quiz (or attached one post-hoc via edit).
+  sourceMaterialKey       String? @map("source_material_key")
+  sourceMaterialFileName  String? @map("source_material_file_name")
+  sourceMaterialMime      String? @map("source_material_mime")
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
   deletedAt       DateTime?      @map("deleted_at")

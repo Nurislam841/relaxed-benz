@@ -41,6 +41,15 @@ export class CreateQuizDto {
   @ApiPropertyOptional({ enum: QuizSource }) @IsEnum(QuizSource) @IsOptional() source?: QuizSource;
   @ApiPropertyOptional() @IsBoolean() @IsOptional() isPublished?: boolean;
   @ApiPropertyOptional() @IsInt() @IsOptional() @Min(5) @Type(() => Number) secondsPerQuestion?: number;
+  /**
+   * Optional source-material attachment. Frontend gets these three from
+   * the /ai/extract-text response when the teacher uploads a lecture
+   * file; persisting them on the quiz lets the Telegram bot stream the
+   * material back to students post-game.
+   */
+  @ApiPropertyOptional() @IsString() @IsOptional() sourceMaterialKey?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() sourceMaterialFileName?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() sourceMaterialMime?: string;
   @ApiProperty({ type: [QuizQuestionInputDto] })
   @IsArray()
   @ArrayMinSize(1)

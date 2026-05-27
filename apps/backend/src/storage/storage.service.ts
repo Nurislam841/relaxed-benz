@@ -158,6 +158,29 @@ export class StorageService implements OnModuleInit {
     return readFile(filePath);
   }
 
+  /**
+   * Generic read — disk OR S3, picks the right path based on current mode.
+   * Used by the Telegram bot when streaming a quiz's source-material file
+   * to a student (sendDocument needs the raw bytes, not a URL).
+   * Returns null on miss so callers can fall back gracefully.
+   */
+  async readKey(key: string): Promise<Buffer | null> {
+    if (this.mode === 's3' && this.s3 && this.s3Bucket) {
+      try {
+        const out = await this.s3.send(new GetObjectCommand({ Bucket: this.s3Bucket, Key: key }));
+        if (!out.Body) return null;
+        // SDK v3 returns a stream — collect to a buffer.
+        const chunks: Buffer[] = [];
+        // @ts-expect-error AWS SDK Body type covers Node and browser; here we know it's a stream.
+        for await (const c of out.Body) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+        return Buffer.concat(chunks);
+      } catch {
+        return null;
+      }
+    }
+    return this.readDiskFile(key);
+  }
+
   /** Whether we'd need a signed URL for reads (i.e. private S3 bucket). */
   get needsSignedReads(): boolean {
     return this.mode === 's3' && !this.s3PublicUrl;
