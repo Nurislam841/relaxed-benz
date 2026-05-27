@@ -294,6 +294,9 @@ describe('AI endpoints (e2e, demo mode)', () => {
     // so the report endpoint returns non-trivial data the AI can analyse.
     let kahootSessionId: string;
     let kahootStudentId: string;
+    // Promoted to outer scope so Feature #4 "student-self lookup" tests
+    // below can use the same token.
+    let insightsStudentToken: string;
 
     beforeAll(async () => {
       // Quiz for the kahoot session — re-use existing courseId.
@@ -320,7 +323,7 @@ describe('AI endpoints (e2e, demo mode)', () => {
       const sLogin = await request(app.getHttpServer())
         .post('/api/auth/login')
         .send({ email: sEmail, password: 'pw123456' });
-      const insightsStudentToken = sLogin.body.accessToken;
+      insightsStudentToken = sLogin.body.accessToken;
 
       // Need a TEACHER who hosts the session — re-use existing teacherToken
       // but that teacher must be enrolled-as-TEACHER in the course. The AI
@@ -412,6 +415,32 @@ describe('AI endpoints (e2e, demo mode)', () => {
         .post('/api/ai/kahoot-insights')
         .set('Authorization', `Bearer ${studentToken}`)
         .send({ sessionId: kahootSessionId, scope: 'class' });
+      expect(res.status).toBe(403);
+    });
+
+    /**
+     * Feature #4 — student-self lookup. A student requesting AI
+     * analysis of their OWN performance is allowed; the service
+     * detects studentId === caller.id and serves through the
+     * student-facing getMyResults path instead of the host-only
+     * report. A student who didn't play gets 403 from getMyResults.
+     */
+    it('student-self lookup: student can ask AI for their own plan (200)', async () => {
+      const me = await request(app.getHttpServer())
+        .post('/api/ai/kahoot-insights')
+        .set('Authorization', `Bearer ${insightsStudentToken}`)
+        .send({ sessionId: kahootSessionId, scope: 'student', studentId: kahootStudentId });
+      expect(me.status).toBe(200);
+      expect(typeof me.body.summary).toBe('string');
+    });
+
+    it('student-self lookup with someone else studentId still 403', async () => {
+      // The kahootStudent passes their own token but a DIFFERENT studentId.
+      // Falls back to host-only check → 403.
+      const res = await request(app.getHttpServer())
+        .post('/api/ai/kahoot-insights')
+        .set('Authorization', `Bearer ${insightsStudentToken}`)
+        .send({ sessionId: kahootSessionId, scope: 'student', studentId: 'someone-else' });
       expect(res.status).toBe(403);
     });
 

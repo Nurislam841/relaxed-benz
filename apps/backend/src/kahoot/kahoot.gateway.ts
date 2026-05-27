@@ -346,10 +346,13 @@ export class KahootGateway implements OnGatewayConnection, OnGatewayDisconnect {
             .map((b: any, i: number) => `${i + 1}\\. ${b.fullName} — ${b.score}`)
             .join('\n')}`
         : '🏁 *Game over!*';
-      const reportUrl = baseUrl ? `${baseUrl}/kahoot/host/${sessionId}/report` : '';
-      if (isTelegramSafeUrl(reportUrl)) {
+      // Feature #4: student-facing URL. The old host-only URL 403'd
+      // students who clicked it; the new page shows the student their
+      // own answers + a button to ask AI for a personal plan.
+      const myUrl = baseUrl ? `${baseUrl}/kahoot/me/${sessionId}/results` : '';
+      if (isTelegramSafeUrl(myUrl)) {
         await this.telegram.sendMessageWithButtons(sub.chatId, text, [
-          [{ text: '📊 Detailed report', url: reportUrl }],
+          [{ text: '📊 My results + AI plan', url: myUrl }],
         ]);
       } else {
         // Local dev with http://localhost — Telegram rejects the URL.

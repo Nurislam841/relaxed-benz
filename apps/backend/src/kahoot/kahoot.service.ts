@@ -397,4 +397,109 @@ export class KahootService {
       perQuestion,
     };
   }
+
+  /**
+   * Feature #4 — student-facing per-session results.
+   *
+   * Where getSessionReport is host-only and dumps everyone's data,
+   * this returns only the caller's own row plus the bare-minimum
+   * leaderboard slot they need to see "rank #3 of 12". Used by the
+   * student results page that the Telegram deep-link drops them into
+   * after Game Over.
+   *
+   * Auth: any authenticated user who actually has an attempt in the
+   * session. Anonymous and "I peeked at the URL" cases get 403/404 —
+   * no leaking another student's answers.
+   */
+  async getMyResults(sessionId: string, user: AuthUser) {
+    const session = await this.db.quizSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        quiz: {
+          select: {
+            id: true,
+            title: true,
+            questions: {
+              where: { deletedAt: null },
+              orderBy: { position: 'asc' },
+              select: {
+                id: true,
+                position: true,
+                question: true,
+                options: true,
+                correctIndex: true,
+                explanation: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!session) throw new NotFoundException();
+
+    const attempt = await this.db.quizAttempt.findFirst({
+      where: { sessionId, studentId: user.id },
+      include: { answers: true },
+    });
+    if (!attempt) {
+      throw new ForbiddenException('You did not play this session');
+    }
+
+    // Compute the student's score/accuracy with the same formula the
+    // host report uses, so the two views match exactly (no off-by-1
+    // surprise when the teacher reads out "you got 60% — pretty good"
+    // and the student sees a different number).
+    const totalQuestions = session.quiz.questions.length;
+    const correctCount = attempt.answers.filter((a) => a.isCorrect).length;
+    const percent = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 1000) / 10 : 0;
+
+    // Map answers in question order; include the correct answer + the
+    // teacher's explanation so the student gets a built-in retro.
+    const answers = session.quiz.questions.map((q) => {
+      const a = attempt.answers.find((x) => x.questionId === q.id);
+      return {
+        questionId: q.id,
+        position: q.position,
+        questionText: q.question,
+        options: q.options as string[],
+        correctIndex: q.correctIndex,
+        explanation: q.explanation,
+        pickedIndex: a?.pickedIndex ?? null,
+        isCorrect: a?.isCorrect ?? false,
+        responseTimeMs: a?.responseTimeMs ?? 0,
+      };
+    });
+
+    // Rank vs the rest of the room — we don't ship per-player rows
+    // (that's the host's view) but the student wants to know where
+    // they landed.
+    const allAttempts = await this.db.quizAttempt.findMany({
+      where: { sessionId },
+      orderBy: { score: 'desc' },
+      select: { studentId: true, score: true },
+    });
+    const myRank = allAttempts.findIndex((a) => a.studentId === user.id) + 1;
+
+    return {
+      session: {
+        id: session.id,
+        joinCode: session.joinCode,
+        quizTitle: session.quiz.title,
+        quizId: session.quiz.id,
+        status: session.status,
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+        totalQuestions,
+      },
+      me: {
+        score: percent,
+        accuracy: percent,
+        correctCount,
+        totalAnswered: attempt.answers.length,
+        rank: myRank,
+        totalPlayers: allAttempts.length,
+      },
+      answers,
+    };
+  }
 }

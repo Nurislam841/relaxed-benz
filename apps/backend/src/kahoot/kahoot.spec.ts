@@ -201,6 +201,59 @@ describe('Kahoot (e2e)', () => {
   });
 
   /**
+   * Feature #4 — student-facing post-session endpoint.
+   *
+   * Distinct from /report (host-only). A student who actually played
+   * the session can see their own answers + rank; anyone who didn't
+   * play gets 403. Used by the Telegram deep-link / "View my results"
+   * link on the play page.
+   */
+  describe('GET /api/kahoot/sessions/:id/my-results', () => {
+    it('returns the calling student own score, rank, and answer trail', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${sessionId}/my-results`)
+        .set('Authorization', `Bearer ${studentToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.session).toBeDefined();
+      expect(res.body.session.id).toBe(sessionId);
+      expect(res.body.me).toBeDefined();
+      expect(typeof res.body.me.score).toBe('number');
+      expect(typeof res.body.me.accuracy).toBe('number');
+      expect(typeof res.body.me.correctCount).toBe('number');
+      expect(typeof res.body.me.rank).toBe('number');
+      expect(typeof res.body.me.totalPlayers).toBe('number');
+      expect(Array.isArray(res.body.answers)).toBe(true);
+      // Each answer carries the question text + the correct answer +
+      // explanation so the student gets an in-page retrospective.
+      expect(res.body.answers[0]?.questionText).toBeDefined();
+      expect(res.body.answers[0]?.correctIndex).toBeDefined();
+    });
+
+    it('returns 403 for a user who never joined the session', async () => {
+      // Create a fresh student who never played the session — they
+      // shouldn't be able to peek at the URL.
+      const sEmail = `outsider-${Date.now()}@example.com`;
+      await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .send({ email: sEmail, password: 'pw123456', fullName: 'Outsider', role: 'STUDENT' });
+      const sLogin = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email: sEmail, password: 'pw123456' });
+      const outsiderToken = sLogin.body.accessToken;
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/kahoot/sessions/${sessionId}/my-results`)
+        .set('Authorization', `Bearer ${outsiderToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('requires authentication (401)', async () => {
+      const res = await request(app.getHttpServer()).get(`/api/kahoot/sessions/${sessionId}/my-results`);
+      expect(res.status).toBe(401);
+    });
+  });
+
+  /**
    * Auto-advance trigger condition: after a player submits an answer,
    * the gateway compares attemptCount vs. answerCount for the current
    * question. When they match, `state:question-complete` is broadcast

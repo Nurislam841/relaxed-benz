@@ -763,16 +763,59 @@ No prose, no fences.`;
   async kahootInsights(dto: KahootInsightsDto, user: { id: string; role: string }) {
     const scope = dto.scope ?? 'class';
 
-    // ensureHostOrAdmin runs inside getSessionReport — 403 propagates
-    // through and the controller doesn't need its own check.
-    const report = await this.kahootSvc.getSessionReport(dto.sessionId, user as any);
-
     if (scope === 'student' && !dto.studentId) {
       throw new BadRequestException('studentId is required when scope=student');
     }
-    const targetPlayer = scope === 'student' ? report.perPlayer.find((p) => p.userId === dto.studentId) : undefined;
-    if (scope === 'student' && !targetPlayer) {
-      throw new BadRequestException('studentId not found in this session');
+
+    /**
+     * Auth strategy (Feature #4 widened):
+     *   - class scope → still host-only (no student should see the
+     *     whole room's per-question breakdown).
+     *   - student scope, target = caller → caller is asking about
+     *     themselves. Use the student-facing getMyResults endpoint
+     *     so a regular STUDENT role can hit this without being host.
+     *   - student scope, target ≠ caller → falls back to the host-only
+     *     getSessionReport, which 403s for non-hosts.
+     */
+    const isSelfLookup = scope === 'student' && dto.studentId === user.id;
+
+    let report: any;
+    let targetPlayer: any;
+
+    if (isSelfLookup) {
+      const my = await this.kahootSvc.getMyResults(dto.sessionId, user as any);
+      // Adapt the student-scoped payload into the same shape the
+      // prompt builders expect. We only need session metadata + the
+      // single player's answer trail for student-scoped prompting.
+      report = {
+        session: my.session,
+        summary: { totalPlayers: my.me.totalPlayers, averageAccuracy: 0, averageScore: 0 },
+        perPlayer: [
+          {
+            userId: user.id,
+            fullName: 'You',
+            score: my.me.score,
+            accuracy: my.me.accuracy,
+            correctCount: my.me.correctCount,
+            rank: my.me.rank,
+            answers: my.answers.map((a: any) => ({
+              questionId: a.questionId,
+              questionText: a.questionText,
+              pickedIndex: a.pickedIndex,
+              correctIndex: a.correctIndex,
+              isCorrect: a.isCorrect,
+            })),
+          },
+        ],
+        perQuestion: [],
+      };
+      targetPlayer = report.perPlayer[0];
+    } else {
+      report = await this.kahootSvc.getSessionReport(dto.sessionId, user as any);
+      targetPlayer = scope === 'student' ? report.perPlayer.find((p: any) => p.userId === dto.studentId) : undefined;
+      if (scope === 'student' && !targetPlayer) {
+        throw new BadRequestException('studentId not found in this session');
+      }
     }
 
     if (this.isDemo) {

@@ -73,4 +73,16 @@ export class KahootController {
   report(@Param('id') id: string, @CurrentUser() u: any) {
     return this.svc.getSessionReport(id, u);
   }
+
+  /**
+   * Feature #4 — student's own post-session view. Returns the caller's
+   * score, rank, and per-question answer trail. Distinct endpoint from
+   * /report (which is host-only) so students can't see each other's
+   * answers; 403 if the caller didn't actually play this session.
+   */
+  @Get('sessions/:id/my-results')
+  @ApiOperation({ summary: 'Student-facing post-session results: own score, rank, and answer trail' })
+  myResults(@Param('id') id: string, @CurrentUser() u: any) {
+    return this.svc.getMyResults(id, u);
+  }
 }

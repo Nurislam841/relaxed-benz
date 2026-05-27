@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Radio, Loader2, Users, CheckCircle2, XCircle, Trophy, Volume2, VolumeX } from 'lucide-react';
+import { Radio, Loader2, Users, CheckCircle2, XCircle, Trophy, Volume2, VolumeX, Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -451,7 +451,19 @@ export default function KahootPlayPage() {
             ))}
           </ol>
         </Card>
-        <Button onClick={() => router.push('/dashboard')}>Back to dashboard</Button>
+        <div className="flex flex-col gap-2">
+          {/* Feature #4: deep-link into the student-facing results page
+              with the per-question review + AI plan button. */}
+          {lobby?.sessionId && (
+            <Button variant="ai" onClick={() => router.push(`/kahoot/me/${lobby.sessionId}/results`)}>
+              <Sparkles className="h-3.5 w-3.5" />
+              View detailed results + AI plan
+            </Button>
+          )}
+          <Button variant="ghost" onClick={() => router.push('/dashboard')}>
+            Back to dashboard
+          </Button>
+        </div>
       </div>
     );
   }
