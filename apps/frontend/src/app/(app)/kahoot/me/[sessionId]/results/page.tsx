@@ -325,7 +325,14 @@ export default function MyKahootResultsPage() {
         </div>
       </div>
 
-      <div className="flex justify-center pt-2">
+      <div className="flex flex-col items-center gap-2 pt-2">
+        {/* Self-study quiz from weak topics — Feature #5. Lands on a
+            dedicated /self-study page that lazy-generates 5 fresh
+            practice questions on whatever this student got wrong. */}
+        <Button variant="ai" size="lg" onClick={() => router.push(`/kahoot/me/${sessionId}/self-study`)}>
+          <Sparkles className="h-3.5 w-3.5" />
+          Practice on what you missed
+        </Button>
         <Button variant="ghost" onClick={() => router.push('/dashboard')}>
           <ArrowLeft className="h-3.5 w-3.5" /> Back to dashboard
         </Button>

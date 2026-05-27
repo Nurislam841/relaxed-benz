@@ -124,6 +124,29 @@ export class QuizAssistDto {
 }
 
 /**
+ * Self-study quiz from a student's weak topics (Feature #5 / C3).
+ *
+ * After a Kahoot session, the student clicks "Create self-study quiz"
+ * on their results page. AI reads the questions they got wrong,
+ * extracts the underlying topics, and generates a fresh small quiz
+ * (5 questions by default, max 10) anchored to those weak spots.
+ * If the original quiz had source material, AI uses it as the
+ * primary grounding; otherwise AI generates from its own knowledge.
+ *
+ * The generated quiz is returned ephemerally — NOT persisted in the
+ * Quiz table. Students play through it on a single page that lives
+ * separately from the host-driven Kahoot flow.
+ *
+ * Auth identical to /ai/kahoot-study-guide — self-lookup or host.
+ */
+export class SelfStudyQuizDto {
+  @ApiProperty() @IsString() @IsNotEmpty() sessionId: string;
+  @ApiProperty() @IsString() @IsNotEmpty() studentId: string;
+  @ApiPropertyOptional({ default: 5 }) @IsOptional() @IsInt() @Min(3) @Max(10) questionCount?: number;
+  @ApiPropertyOptional({ enum: AI_LANGS }) @IsOptional() @IsIn(AI_LANGS) lang?: string;
+}
+
+/**
  * Personalized study guide for a student after a Kahoot session.
  *
  * Two modes the service picks between automatically:

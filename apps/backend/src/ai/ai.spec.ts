@@ -493,6 +493,61 @@ describe('AI endpoints (e2e, demo mode)', () => {
         expect(res.status).toBe(400);
       });
     });
+
+    /**
+     * Self-study quiz from weak topics — Feature #5. AI rewrites the
+     * student's missed questions into 5 fresh practice questions.
+     * Ephemeral payload (NOT saved to the Quiz library); the frontend
+     * plays through it client-side.
+     */
+    describe('POST /api/ai/self-study-quiz', () => {
+      it('student-self lookup returns { questions: [...] }', async () => {
+        const res = await request(app.getHttpServer())
+          .post('/api/ai/self-study-quiz')
+          .set('Authorization', `Bearer ${insightsStudentToken}`)
+          .send({ sessionId: kahootSessionId, studentId: kahootStudentId });
+        expect(res.status).toBe(200);
+        expect(Array.isArray(res.body.questions)).toBe(true);
+        if (res.body.questions.length > 0) {
+          const q = res.body.questions[0];
+          expect(typeof q.question).toBe('string');
+          expect(Array.isArray(q.options)).toBe(true);
+          expect(typeof q.correctIndex).toBe('number');
+          expect(typeof q.explanation).toBe('string');
+        }
+      });
+
+      it('returns 403 when student asks about someone else', async () => {
+        const res = await request(app.getHttpServer())
+          .post('/api/ai/self-study-quiz')
+          .set('Authorization', `Bearer ${insightsStudentToken}`)
+          .send({ sessionId: kahootSessionId, studentId: 'not-me' });
+        expect(res.status).toBe(403);
+      });
+
+      it('requires auth (401)', async () => {
+        const res = await request(app.getHttpServer())
+          .post('/api/ai/self-study-quiz')
+          .send({ sessionId: kahootSessionId, studentId: kahootStudentId });
+        expect(res.status).toBe(401);
+      });
+
+      it('accepts custom questionCount within 3..10', async () => {
+        const res = await request(app.getHttpServer())
+          .post('/api/ai/self-study-quiz')
+          .set('Authorization', `Bearer ${insightsStudentToken}`)
+          .send({ sessionId: kahootSessionId, studentId: kahootStudentId, questionCount: 7 });
+        expect(res.status).toBe(200);
+      });
+
+      it('rejects questionCount out of range (400)', async () => {
+        const res = await request(app.getHttpServer())
+          .post('/api/ai/self-study-quiz')
+          .set('Authorization', `Bearer ${insightsStudentToken}`)
+          .send({ sessionId: kahootSessionId, studentId: kahootStudentId, questionCount: 99 });
+        expect(res.status).toBe(400);
+      });
+    });
   });
 
   // ─── /api/ai/quiz-assist (Feature #2 — inline editor AI) ────────────────

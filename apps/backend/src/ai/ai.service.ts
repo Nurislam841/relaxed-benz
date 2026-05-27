@@ -20,6 +20,7 @@ import {
   QuizAssistAction,
   KahootInsightsDto,
   KahootStudyGuideDto,
+  SelfStudyQuizDto,
 } from './ai.dto';
 import { KahootService } from '../kahoot/kahoot.service';
 import { Inject, forwardRef } from '@nestjs/common';
@@ -1273,6 +1274,176 @@ No prose outside the JSON. No fences.`;
       sections,
       mostImportant: String(parsed?.mostImportant ?? '').trim(),
     };
+  }
+
+  /**
+   * Self-study quiz from a student's weak topics (Feature #5).
+   *
+   * Drives the "Practice on what you missed" button on the student
+   * results page. Reads the wrong-answer questions, extracts the
+   * underlying topics, and asks Claude to author N fresh
+   * multiple-choice questions that drill those topics. The new
+   * quiz is NOT saved to the DB — it lives only as a JSON response
+   * the frontend plays through ephemerally. That keeps the course
+   * Quiz library clean and avoids stale practice quizzes piling up.
+   *
+   * Topic extraction is intentionally simple: we use the original
+   * question text as the topic seed. Claude rephrases/varies in
+   * the new questions so the student doesn't just memorise the
+   * exact wording from the first round.
+   *
+   * Auth: same self-lookup pattern as the study-guide endpoint.
+   */
+  async selfStudyQuiz(dto: SelfStudyQuizDto, user: { id: string; role: string }) {
+    const count = dto.questionCount ?? 5;
+    const isSelfLookup = dto.studentId === user.id;
+
+    const session = await this.db.quizSession.findUnique({
+      where: { id: dto.sessionId },
+      include: {
+        quiz: { select: { sourceMaterialText: true, title: true } },
+      },
+    });
+    const sourceMaterial = session?.quiz?.sourceMaterialText ?? null;
+    const quizTitle = session?.quiz?.title ?? 'the quiz';
+
+    // Auto-detect lang (material → quiz title) unless caller passed one.
+    if (!dto.lang) {
+      const detected = this.detectLangFromText(sourceMaterial) || this.detectLangFromText(quizTitle);
+      if (detected) dto = { ...dto, lang: detected };
+    }
+
+    // Pull the student's answer trail via the auth-aware path.
+    let answers: any[];
+    if (isSelfLookup) {
+      const my = await this.kahootSvc.getMyResults(dto.sessionId, user as any);
+      answers = my.answers;
+    } else {
+      const report = await this.kahootSvc.getSessionReport(dto.sessionId, user as any);
+      const p = report.perPlayer.find((p: any) => p.userId === dto.studentId);
+      if (!p) throw new BadRequestException('studentId not found in this session');
+      answers = p.answers;
+    }
+
+    const wrong = (answers || []).filter((a: any) => !a.isCorrect);
+    if (wrong.length === 0) {
+      // No mistakes → still give them practice but flag it as such.
+      // The frontend can choose to skip or show "you got everything
+      // right — here's some extension practice anyway".
+      return this.buildSelfStudyDemo(count, [], !!sourceMaterial, true);
+    }
+
+    if (this.isDemo) {
+      return this.buildSelfStudyDemo(count, wrong, !!sourceMaterial, false);
+    }
+
+    const prompt = this.buildSelfStudyPrompt(count, wrong, sourceMaterial, dto.lang);
+
+    let response;
+    try {
+      const stream = this.client!.messages.stream({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 8000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      response = await stream.finalMessage();
+    } catch (e) {
+      if (this.flagInvalidIfAuthError(e)) return this.buildSelfStudyDemo(count, wrong, !!sourceMaterial, false);
+      throw e;
+    }
+
+    const textBlock = response.content.find((b) => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') throw new InternalServerErrorException('No response from AI');
+
+    const rawText = (textBlock.text as string)
+      .replace(/```(?:json)?\s*/gi, '')
+      .replace(/```$/g, '')
+      .trim();
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      this.logger.error(`selfStudyQuiz JSON parse failed. Raw: ${rawText.slice(0, 800)}`);
+      throw new InternalServerErrorException('AI returned malformed JSON — please try again.');
+    }
+
+    const shaped = this.shapeSelfStudyQuiz(parsed);
+    await this.log(user.id, 'self-study-quiz', prompt, JSON.stringify(shaped));
+    return shaped;
+  }
+
+  private buildSelfStudyPrompt(
+    count: number,
+    wrongAnswers: any[],
+    sourceMaterial: string | null,
+    lang?: string,
+  ): string {
+    const langInstr = this.langInstructionFor(lang);
+    const wrongList = wrongAnswers
+      .map((a, i) => {
+        const correct = a.options[a.correctIndex];
+        return `${i + 1}. The student missed: "${a.questionText}" (correct answer was "${correct}")`;
+      })
+      .join('\n');
+
+    const materialBlock = sourceMaterial
+      ? `
+--- LECTURE MATERIAL (use as primary grounding) ---
+${sourceMaterial}
+--- END LECTURE MATERIAL ---
+
+`
+      : '';
+
+    return `${langInstr}${materialBlock}Generate ${count} fresh multiple-choice practice questions that drill EXACTLY the same concepts the student got wrong below. Rephrase and vary — do NOT copy the original wording verbatim — so the student practises understanding, not memorising.
+
+QUESTIONS THE STUDENT MISSED:
+${wrongList}
+
+Each question must have:
+  - question text
+  - 4 options
+  - correctIndex (0-based)
+  - explanation (1-2 sentences) — appears after the student answers, explains why the correct option is right
+
+Return ONLY valid JSON:
+{
+  "questions": [
+    { "question": "...", "options": ["...","...","...","..."], "correctIndex": 0, "explanation": "..." }
+  ]
+}
+
+No prose outside the JSON. No fences.`;
+  }
+
+  private buildSelfStudyDemo(count: number, wrong: any[], hasMaterial: boolean, perfectScore: boolean) {
+    const questions = Array.from({ length: count }, (_, i) => {
+      const seed = wrong[i % Math.max(1, wrong.length)]?.questionText || `Demo topic ${i + 1}`;
+      return {
+        question: `[demo] Practice question ${i + 1} about: ${seed.slice(0, 60)}`,
+        options: ['[demo] correct', '[demo] distractor A', '[demo] distractor B', '[demo] distractor C'],
+        correctIndex: 0,
+        explanation: '[demo] LLM_API_KEY is not configured — real practice questions need it.',
+      };
+    });
+    return { _demo: true as const, hasMaterial, perfectScore, questions };
+  }
+
+  private shapeSelfStudyQuiz(parsed: any) {
+    const questions = Array.isArray(parsed?.questions)
+      ? parsed.questions
+          .filter((q: any) => typeof q?.question === 'string' && Array.isArray(q?.options))
+          .map((q: any) => ({
+            question: String(q.question).trim(),
+            options: q.options.map((o: any) => String(o)).slice(0, 8),
+            correctIndex: Math.max(0, Math.min(q.options.length - 1, Number(q.correctIndex) || 0)),
+            explanation: String(q.explanation ?? '').trim(),
+          }))
+      : [];
+    return { questions };
   }
 
   async getCourseSummary(dto: CourseSummaryDto, userId: string) {

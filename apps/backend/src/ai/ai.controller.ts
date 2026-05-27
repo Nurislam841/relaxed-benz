@@ -30,6 +30,7 @@ import {
   QuizAssistDto,
   KahootInsightsDto,
   KahootStudyGuideDto,
+  SelfStudyQuizDto,
 } from './ai.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
@@ -158,6 +159,26 @@ export class AiController {
   @ApiResponse({ status: 403, description: 'Not the session host AND not asking about yourself' })
   kahootStudyGuide(@Body() dto: KahootStudyGuideDto, @CurrentUser() user: any) {
     return this.svc.kahootStudyGuide(dto, user);
+  }
+
+  /**
+   * Self-study quiz from weak topics (Feature #5). After a Kahoot
+   * session the student can click "Practice on what you missed" and
+   * play a fresh AI-generated quiz on the exact topics they got
+   * wrong. Ephemeral — the response JSON is played client-side, NOT
+   * persisted in the Quiz library so the course doesn't accumulate
+   * stale per-student practice quizzes.
+   */
+  @Post('self-study-quiz')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Ephemeral AI quiz drilling the student own wrong-answer topics' })
+  @ApiResponse({
+    status: 200,
+    description: '{ questions: [{ question, options, correctIndex, explanation }] }; _demo:true without LLM key.',
+  })
+  @ApiResponse({ status: 403, description: 'Not host AND not asking about yourself' })
+  selfStudyQuiz(@Body() dto: SelfStudyQuizDto, @CurrentUser() user: any) {
+    return this.svc.selfStudyQuiz(dto, user);
   }
 
   @Post('extract-text')
