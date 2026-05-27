@@ -317,7 +317,13 @@ export class KahootGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (result.status === QuizSessionStatus.FINISHED) {
       this.server.to(this.room(data.sessionId)).emit('state:finished', null);
       await this.emitLeaderboard(data.sessionId);
-      await this.notifyTelegramFinished(data.sessionId);
+      // Fire-and-forget the Telegram fan-out so a Telegram outage or
+      // a slow `sendMessage` call doesn't block the host:next ACK and
+      // leave the teacher's screen spinning. The host page already
+      // got state:finished above; TG delivery is best-effort UX.
+      this.notifyTelegramFinished(data.sessionId).catch((e) =>
+        this.logger.warn(`TG end-of-game fanout failed for ${data.sessionId}: ${e?.message ?? e}`),
+      );
     } else {
       await this.emitCurrentQuestion(data.sessionId);
       await this.emitLeaderboard(data.sessionId);
@@ -326,38 +332,68 @@ export class KahootGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
-   * Tell every Telegram subscriber that the game is over and send their
-   * personal rank + final score. We also offer a button to view the
-   * detailed post-session report.
+   * End-of-game Telegram fan-out (Feature #4 widened).
+   *
+   * Old behaviour: only students who joined via `/join CODE` in the
+   * Telegram bot got a final message — the `KahootTelegramSubscription`
+   * table is created on that path. Students who joined via web with a
+   * linked Telegram account got nothing, which surprised everyone.
+   *
+   * New behaviour: send to every distinct player who has a linked
+   * `telegramChatId`, regardless of how they joined. We union the
+   * /join-ed subscribers with the played-via-web set so each linked
+   * student gets exactly one personalised message with their rank +
+   * the My-Results deep link.
    */
   private async notifyTelegramFinished(sessionId: string) {
     if (!this.telegram?.isEnabled) return;
-    const [subs, board] = await Promise.all([
+    const [subs, attempts, board] = await Promise.all([
       this.db.kahootTelegramSubscription.findMany({ where: { sessionId } }),
+      this.db.quizAttempt.findMany({
+        where: { sessionId },
+        include: { student: { select: { id: true, telegramChatId: true } } },
+      }),
       this.kahootSvc.leaderboard(sessionId),
     ]);
-    if (subs.length === 0) return;
-    const baseUrl = getUserFacingBaseUrl();
+
+    // Dedupe by chatId — same user from both /join and the play
+    // attempt table should not get two messages.
+    const recipients = new Map<string, { chatId: string; userId: string }>();
     for (const sub of subs) {
-      const me = board.find((b: any) => b.userId === sub.userId);
+      recipients.set(sub.chatId, { chatId: sub.chatId, userId: sub.userId });
+    }
+    for (const a of attempts) {
+      const cid = a.student?.telegramChatId;
+      if (cid && !recipients.has(cid)) {
+        recipients.set(cid, { chatId: cid, userId: a.student.id });
+      }
+    }
+    if (recipients.size === 0) return;
+
+    const baseUrl = getUserFacingBaseUrl();
+    for (const r of recipients.values()) {
+      const me = board.find((b: any) => b.userId === r.userId);
       const text = me
         ? `🏁 *Game over!*\n\nYour rank: *#${me.rank}* with *${me.score}* points.\n\nTop 3:\n${board
             .slice(0, 3)
             .map((b: any, i: number) => `${i + 1}\\. ${b.fullName} — ${b.score}`)
             .join('\n')}`
         : '🏁 *Game over!*';
-      // Feature #4: student-facing URL. The old host-only URL 403'd
-      // students who clicked it; the new page shows the student their
-      // own answers + a button to ask AI for a personal plan.
+      // Student-facing URL — see Feature #4 page in apps/frontend.
       const myUrl = baseUrl ? `${baseUrl}/kahoot/me/${sessionId}/results` : '';
-      if (isTelegramSafeUrl(myUrl)) {
-        await this.telegram.sendMessageWithButtons(sub.chatId, text, [
-          [{ text: '📊 My results + AI plan', url: myUrl }],
-        ]);
-      } else {
-        // Local dev with http://localhost — Telegram rejects the URL.
-        // Just send the text message without the button.
-        await this.telegram.sendMessage(sub.chatId, text);
+      try {
+        if (isTelegramSafeUrl(myUrl)) {
+          await this.telegram.sendMessageWithButtons(r.chatId, text, [
+            [{ text: '📊 My results + AI plan', url: myUrl }],
+          ]);
+        } else {
+          // Local dev with http://localhost — Telegram rejects the URL.
+          await this.telegram.sendMessage(r.chatId, text);
+        }
+      } catch (e: any) {
+        // One bad recipient (e.g. blocked the bot) shouldn't drop the
+        // rest of the room's notifications.
+        this.logger.warn(`TG end-of-game send failed for chat ${r.chatId}: ${e?.message ?? e}`);
       }
     }
   }
@@ -409,6 +445,13 @@ export class KahootGateway implements OnGatewayConnection, OnGatewayDisconnect {
     await this.kahootSvc.finish(data.sessionId, user);
     this.server.to(this.room(data.sessionId)).emit('state:finished', null);
     await this.emitLeaderboard(data.sessionId);
+    // Manual end-game button — same end-of-game UX as auto-finish on
+    // the last question, so linked students get their TG notification
+    // regardless of how the host wrapped up. Fire-and-forget so a
+    // Telegram outage doesn't block the host:finish ACK.
+    this.notifyTelegramFinished(data.sessionId).catch((e) =>
+      this.logger.warn(`TG end-of-game fanout failed for ${data.sessionId}: ${e?.message ?? e}`),
+    );
     return { ok: true };
   }
 }
