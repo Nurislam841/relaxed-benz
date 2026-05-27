@@ -11,6 +11,7 @@ import { GradesService } from '../grades/grades.service';
 import { AssignmentsService } from '../assignments/assignments.service';
 import { KahootService } from '../kahoot/kahoot.service';
 import { StorageService } from '../storage/storage.service';
+import { buildAiPlanPdf, buildStudyGuidePdf } from './kahoot-pdf-builder';
 import { getBackendPublicUrl, getFrontendUrl, getUserFacingBaseUrl } from '../common/public-url';
 import { t, normaliseLang, BOT_LANGS, type BotLang } from './bot-i18n';
 
@@ -933,8 +934,9 @@ export class TelegramUpdatesService implements OnModuleInit {
       return;
     }
 
-    // kahplan:<sessionId> — generate AI personal plan for this user
-    // based on their answers in the Kahoot session, send as a TG message.
+    // kahplan:<sessionId> — generate AI personal plan and ship it as
+    // a PDF attachment. Inline text gets lost in long chat threads;
+    // a downloadable PDF is referenceable later and prints cleanly.
     if (data.startsWith('kahplan:')) {
       const sessionId = data.slice('kahplan:'.length);
       const user = await this.findLinkedUser(ctx);
@@ -942,22 +944,23 @@ export class TelegramUpdatesService implements OnModuleInit {
         await ctx.answerCallbackQuery({ text: 'Please /start first', show_alert: true });
         return;
       }
-      await ctx.answerCallbackQuery({ text: '🧠 Thinking…' });
+      await ctx.answerCallbackQuery({ text: '🧠 Building your plan PDF…' });
       try {
         if (!this.ai) throw new Error('AI unavailable');
         const plan = await this.ai.kahootInsights({ sessionId, scope: 'student', studentId: user.id } as any, {
           id: user.id,
           role: user.role,
         });
-        const lines: string[] = ['*🧠 Your AI study plan*', '', plan.summary || '', ''];
-        if (Array.isArray(plan.strengths) && plan.strengths.length) {
-          lines.push('*Strengths*', ...plan.strengths.slice(0, 3).map((s: string) => `✅ ${s}`), '');
+        const session = await this.db.quizSession.findUnique({
+          where: { id: sessionId },
+          select: { quiz: { select: { title: true } } },
+        });
+        const pdf = await buildAiPlanPdf(plan as any, user.fullName, session?.quiz?.title ?? 'Kahoot session');
+        if (ctx.chat) {
+          await ctx.api.sendDocument(ctx.chat.id, new InputFile(pdf, 'ai-study-plan.pdf'), {
+            caption: '🧠 Your personal AI plan',
+          });
         }
-        if (Array.isArray(plan.gaps) && plan.gaps.length) {
-          lines.push('*Gaps to close*', ...plan.gaps.slice(0, 3).map((g: string) => `🔧 ${g}`), '');
-        }
-        if (plan.nextStep) lines.push('*Next step*', `➡️ ${plan.nextStep}`);
-        if (ctx.chat) await ctx.api.sendMessage(ctx.chat.id, lines.join('\n'));
       } catch (e: any) {
         if (ctx.chat)
           await ctx.api.sendMessage(ctx.chat.id, `❌ Could not generate plan: ${e?.message ?? 'unknown error'}`);
@@ -965,11 +968,13 @@ export class TelegramUpdatesService implements OnModuleInit {
       return;
     }
 
-    // kahguide:<sessionId> — Personalized study guide. AI reads the
-    // teacher's uploaded material (or generates a mini-lesson if no
-    // material exists) and writes focused explanations for the
-    // student's missed questions. Delivered as a multi-section TG
-    // message — way smarter than dumping the whole 200-page PDF.
+    // kahguide:<sessionId> — Personalized study guide as a PDF.
+    // AI reads the teacher's uploaded material (or generates a
+    // mini-lesson if no material exists) and writes focused
+    // explanations for the student's missed questions. The PDF
+    // wraps it all with section headers + a left-bar quote style
+    // so the student can save / print / re-read later — way
+    // better UX than a 3500-char chat-blob.
     if (data.startsWith('kahguide:')) {
       const sessionId = data.slice('kahguide:'.length);
       const user = await this.findLinkedUser(ctx);
@@ -977,39 +982,22 @@ export class TelegramUpdatesService implements OnModuleInit {
         await ctx.answerCallbackQuery({ text: 'Please /start first', show_alert: true });
         return;
       }
-      await ctx.answerCallbackQuery({ text: '📖 Building your study guide…' });
+      await ctx.answerCallbackQuery({ text: '📖 Building your study guide PDF…' });
       try {
         if (!this.ai) throw new Error('AI unavailable');
         const guide = await this.ai.kahootStudyGuide({ sessionId, studentId: user.id } as any, {
           id: user.id,
           role: user.role,
         });
-        const lines: string[] = [];
-        lines.push('*📖 Your personalized study guide*', '');
-        if (guide.topLine) lines.push(guide.topLine, '');
-        for (const s of guide.sections || []) {
-          lines.push(`*${s.title}*`);
-          if (s.sourceQuote) lines.push(`📚 From your lecture:`, `_"${s.sourceQuote}"_`);
-          else if (s.lesson) lines.push(`💡 ${s.lesson}`);
-          if (s.whyWrong) lines.push(`❌ Why your pick was wrong: ${s.whyWrong}`);
-          if (s.whyRight) lines.push(`✅ Why the correct answer is right: ${s.whyRight}`);
-          if (s.example) lines.push(`🎯 Example: ${s.example}`);
-          lines.push('');
-        }
-        if (guide.mostImportant) lines.push(`*👉 Most important*`, guide.mostImportant);
-        if ((guide as any)._demo) lines.push('', '_(demo mode — connect LLM_API_KEY for real output)_');
+        const session = await this.db.quizSession.findUnique({
+          where: { id: sessionId },
+          select: { quiz: { select: { title: true } } },
+        });
+        const pdf = await buildStudyGuidePdf(guide as any, user.fullName, session?.quiz?.title ?? 'Kahoot session');
         if (ctx.chat) {
-          // TG cap is 4096 chars per message; chunk on paragraph
-          // boundaries so long guides don't fail to send.
-          const full = lines.join('\n');
-          const CHUNK = 3500;
-          if (full.length <= CHUNK) {
-            await ctx.api.sendMessage(ctx.chat.id, full);
-          } else {
-            for (let i = 0; i < full.length; i += CHUNK) {
-              await ctx.api.sendMessage(ctx.chat.id, full.slice(i, i + CHUNK));
-            }
-          }
+          await ctx.api.sendDocument(ctx.chat.id, new InputFile(pdf, 'study-guide.pdf'), {
+            caption: '📖 Your personalized study guide',
+          });
         }
       } catch (e: any) {
         if (ctx.chat)
