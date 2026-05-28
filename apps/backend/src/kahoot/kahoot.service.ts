@@ -219,7 +219,17 @@ export class KahootService {
       data: { score: { increment: pointsEarned } },
     });
 
-    return { isCorrect, pointsEarned };
+    // Return correctIndex + explanation so the player UI can reveal the
+    // right answer (green) and the student's wrong pick (red) immediately
+    // after answering — same instant-feedback the self-study mode gives.
+    // This trades Kahoot's competitive secrecy for stronger learning,
+    // which is the right call for an education-first LMS.
+    return {
+      isCorrect,
+      pointsEarned,
+      correctIndex: question.correctIndex,
+      explanation: question.explanation || '',
+    };
   }
 
   async leaderboard(sessionId: string) {

@@ -59,12 +59,19 @@ export default function KahootPlayPage() {
   const { data: user } = useMe();
 
   const [joinCode, setJoinCode] = useState('');
-  const [phase, setPhase] = useState<'enter-code' | 'lobby' | 'question' | 'reveal' | 'finished'>('enter-code');
+  const [phase, setPhase] = useState<'enter-code' | 'lobby' | 'question' | 'finished'>('enter-code');
   const [lobby, setLobby] = useState<LobbyState | null>(null);
   const [question, setQuestion] = useState<QuestionState | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [pickedIndex, setPickedIndex] = useState<number | null>(null);
-  const [lastResult, setLastResult] = useState<{ isCorrect: boolean; pointsEarned: number } | null>(null);
+  const [lastResult, setLastResult] = useState<{
+    isCorrect: boolean;
+    pointsEarned: number;
+    // correctIndex + explanation drive the instant green/red reveal on
+    // the question screen after the student answers.
+    correctIndex?: number;
+    explanation?: string;
+  } | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const [busy, setBusy] = useState(false);
   // Mute toggle reflected in the top-right of the play view. Persists in
@@ -157,9 +164,12 @@ export default function KahootPlayPage() {
       });
 
       socket.on('state:leaderboard', (board: LeaderboardEntry[]) => {
+        // Just update the board — we DON'T flip to a separate 'reveal'
+        // phase anymore. The student stays on the question screen so
+        // the green/red answer reveal + explanation stay visible until
+        // the host advances (which sends a fresh state:question and
+        // resets pickedIndex). A compact leaderboard is shown inline.
         setLeaderboard(board);
-        // If we have a lastResult shown, advance to reveal phase
-        if (lastResult || pickedIndex != null) setPhase('reveal');
       });
 
       socket.on('state:finished', () => {
@@ -170,14 +180,17 @@ export default function KahootPlayPage() {
         sounds.playGameOver();
       });
 
-      socket.on('answer:result', (r: { isCorrect: boolean; pointsEarned: number }) => {
-        setLastResult(r);
-        // SFX feedback (Feature: game bells). Win = bright C-major
-        // arpeggio, Lose = short descending minor. Muted users hear
-        // nothing — the SFX call is a silent no-op when muted=true.
-        if (r.isCorrect) sounds.playWin();
-        else sounds.playLose();
-      });
+      socket.on(
+        'answer:result',
+        (r: { isCorrect: boolean; pointsEarned: number; correctIndex?: number; explanation?: string }) => {
+          setLastResult(r);
+          // SFX feedback (Feature: game bells). Win = bright C-major
+          // arpeggio, Lose = short descending minor. Muted users hear
+          // nothing — the SFX call is a silent no-op when muted=true.
+          if (r.isCorrect) sounds.playWin();
+          else sounds.playLose();
+        },
+      );
 
       // Now join the session
       socket.emit('join', { sessionId: sess.sessionId }, (ack: { ok?: boolean; isHost?: boolean }) => {
@@ -335,85 +348,95 @@ export default function KahootPlayPage() {
         </Card>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {question.options.map((opt, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => submitAnswer(i)}
-              disabled={pickedIndex != null}
-              className={cn(
-                'rounded-xl text-white font-semibold text-left p-5 transition-all shadow-md',
-                OPTION_COLORS[i % OPTION_COLORS.length],
-                pickedIndex === i && 'ring-4 ring-white/40',
-                pickedIndex != null && pickedIndex !== i && 'opacity-40',
-                pickedIndex == null && 'hover:scale-[1.02] active:scale-100',
-                pickedIndex != null && 'cursor-not-allowed',
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <span className="h-6 w-6 rounded-full bg-white/25 flex items-center justify-center text-sm font-bold">
-                  {String.fromCharCode(65 + i)}
-                </span>
-                <span className="flex-1">{opt}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {pickedIndex != null && (
-          <p className="text-center text-[13px] text-[var(--fg-muted)]">
-            Answer locked in. Waiting for the host to advance…
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  if (phase === 'reveal') {
-    return (
-      <div className="max-w-2xl mx-auto mt-10 space-y-6">
-        {lastResult && (
-          <Card padding="lg" className="text-center">
-            {lastResult.isCorrect ? (
-              <>
-                <CheckCircle2 className="h-12 w-12 mx-auto text-emerald-500" />
-                <h2 className="font-serif text-2xl mt-3">Correct!</h2>
-                <p className="text-[var(--fg-muted)] mt-1">+{lastResult.pointsEarned} points</p>
-              </>
-            ) : (
-              <>
-                <XCircle className="h-12 w-12 mx-auto text-rose-500" />
-                <h2 className="font-serif text-2xl mt-3">Not this time</h2>
-                <p className="text-[var(--fg-muted)] mt-1">Better luck on the next question.</p>
-              </>
-            )}
-          </Card>
-        )}
-
-        <Card padding="md">
-          <Eyebrow>Leaderboard</Eyebrow>
-          <ol className="mt-3 space-y-1.5">
-            {leaderboard.slice(0, 5).map((p) => (
-              <li
-                key={p.userId}
+          {question.options.map((opt, i) => {
+            // Reveal state — only once answer:result arrived with a
+            // correctIndex. Until then we just dim the non-picked tiles.
+            const revealed = lastResult?.correctIndex !== undefined;
+            const isCorrectOpt = revealed && i === lastResult!.correctIndex;
+            const isWrongPick = revealed && i === pickedIndex && i !== lastResult!.correctIndex;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => submitAnswer(i)}
+                disabled={pickedIndex != null}
                 className={cn(
-                  'flex items-center justify-between px-2 py-1.5 rounded-md',
-                  p.userId === user?.id && 'bg-[var(--accent-100)]',
+                  'rounded-xl text-white font-semibold text-left p-5 transition-all shadow-md',
+                  OPTION_COLORS[i % OPTION_COLORS.length],
+                  // Pre-reveal: white ring on pick, dim the rest.
+                  !revealed && pickedIndex === i && 'ring-4 ring-white/40',
+                  !revealed && pickedIndex != null && pickedIndex !== i && 'opacity-40',
+                  // Post-reveal: green ring on the correct option, red
+                  // ring on the student's wrong pick, dim everything else.
+                  isCorrectOpt && 'ring-4 ring-emerald-300',
+                  isWrongPick && 'ring-4 ring-rose-300',
+                  revealed && !isCorrectOpt && !isWrongPick && 'opacity-40',
+                  pickedIndex == null && 'hover:scale-[1.02] active:scale-100',
+                  pickedIndex != null && 'cursor-not-allowed',
                 )}
               >
-                <span className="flex items-center gap-2.5">
-                  <span className="font-mono text-xs text-[var(--fg-muted)] w-6 text-right">#{p.rank}</span>
-                  <span className={p.userId === user?.id ? 'font-semibold' : ''}>{p.fullName}</span>
-                </span>
-                <span className="font-mono font-semibold">{p.score}</span>
-              </li>
-            ))}
-          </ol>
-        </Card>
+                <div className="flex items-center gap-3">
+                  <span className="h-6 w-6 rounded-full bg-white/25 flex items-center justify-center text-sm font-bold">
+                    {String.fromCharCode(65 + i)}
+                  </span>
+                  <span className="flex-1">{opt}</span>
+                  {isCorrectOpt && <CheckCircle2 className="h-5 w-5 shrink-0" />}
+                  {isWrongPick && <XCircle className="h-5 w-5 shrink-0" />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
 
-        <p className="text-center text-[12px] text-[var(--fg-muted)]">
-          Waiting for the host to start the next question…
-        </p>
+        {/* Instant feedback line + explanation, shown the moment the
+            answer:result event lands — same educational reveal the
+            self-study mode gives. */}
+        {lastResult && (
+          <div className="space-y-2">
+            <p
+              className={cn(
+                'text-center text-[14px] font-semibold',
+                lastResult.isCorrect ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400',
+              )}
+            >
+              {lastResult.isCorrect ? `✓ Correct! +${lastResult.pointsEarned}` : '✗ Not this time'}
+            </p>
+            {lastResult.explanation && (
+              <Card padding="md" className="bg-[var(--surface-subtle)]">
+                <Eyebrow>Explanation</Eyebrow>
+                <p className="text-[13px] mt-1 text-[var(--fg)]">{lastResult.explanation}</p>
+              </Card>
+            )}
+            {/* Compact live leaderboard so the student still sees the
+                competitive standing without leaving the reveal. */}
+            {leaderboard.length > 0 && (
+              <Card padding="sm">
+                <Eyebrow>Leaderboard</Eyebrow>
+                <ol className="mt-2 space-y-1">
+                  {leaderboard.slice(0, 5).map((p) => (
+                    <li
+                      key={p.userId}
+                      className={cn(
+                        'flex items-center justify-between text-[13px] px-2 py-1 rounded-md',
+                        p.userId === user?.id && 'bg-[var(--accent-100)]',
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-[var(--fg-muted)] w-5 text-right">#{p.rank}</span>
+                        <span className={p.userId === user?.id ? 'font-semibold' : ''}>{p.fullName}</span>
+                      </span>
+                      <span className="font-mono font-semibold">{p.score}</span>
+                    </li>
+                  ))}
+                </ol>
+              </Card>
+            )}
+            <p className="text-center text-[12px] text-[var(--fg-muted)]">Waiting for the host to advance…</p>
+          </div>
+        )}
+        {pickedIndex != null && !lastResult && (
+          <p className="text-center text-[13px] text-[var(--fg-muted)]">Answer locked in…</p>
+        )}
       </div>
     );
   }

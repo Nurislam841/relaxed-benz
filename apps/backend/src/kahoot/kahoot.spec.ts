@@ -126,6 +126,10 @@ describe('Kahoot (e2e)', () => {
     expect(ans.status).toBe(201);
     expect(ans.body.isCorrect).toBe(true);
     expect(ans.body.pointsEarned).toBeGreaterThan(0);
+    // Answer result now carries correctIndex + explanation so the player
+    // UI can reveal the right answer (green) + wrong pick (red) instantly.
+    expect(ans.body.correctIndex).toBe(1);
+    expect(typeof ans.body.explanation).toBe('string');
 
     const board = await request(app.getHttpServer())
       .get(`/api/kahoot/sessions/${sessionId}/leaderboard`)
