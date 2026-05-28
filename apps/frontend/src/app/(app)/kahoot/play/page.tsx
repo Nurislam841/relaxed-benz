@@ -388,9 +388,11 @@ export default function KahootPlayPage() {
           })}
         </div>
 
-        {/* Instant feedback line + explanation, shown the moment the
-            answer:result event lands — same educational reveal the
-            self-study mode gives. */}
+        {/* Instant correct/wrong feedback the moment answer:result
+            lands. The green/red option highlight above already shows
+            WHICH answer was right; the explanation (the WHY) is
+            intentionally deferred to the post-game review page so the
+            live game stays fast and competitive. */}
         {lastResult && (
           <div className="space-y-2">
             <p
@@ -401,12 +403,6 @@ export default function KahootPlayPage() {
             >
               {lastResult.isCorrect ? `✓ Correct! +${lastResult.pointsEarned}` : '✗ Not this time'}
             </p>
-            {lastResult.explanation && (
-              <Card padding="md" className="bg-[var(--surface-subtle)]">
-                <Eyebrow>Explanation</Eyebrow>
-                <p className="text-[13px] mt-1 text-[var(--fg)]">{lastResult.explanation}</p>
-              </Card>
-            )}
             {/* Compact live leaderboard so the student still sees the
                 competitive standing without leaving the reveal. */}
             {leaderboard.length > 0 && (
