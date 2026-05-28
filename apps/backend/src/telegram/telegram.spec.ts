@@ -156,13 +156,40 @@ describe('Telegram (e2e)', () => {
   // confirming the endpoint returns 200 immediately when the bot isn't
   // configured (it has nothing to handle — silent no-op).
   describe('Webhook endpoint', () => {
-    it('returns 200 when bot is disabled (silent no-op)', async () => {
+    // The controller reads TELEGRAM_WEBHOOK_SECRET fresh on every request
+    // (not at construction), so each test toggles it inline and restores
+    // it after. .env in the test environment ships a real secret, so we
+    // can't assume it's unset.
+    const savedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    afterEach(() => {
+      if (savedSecret === undefined) delete process.env.TELEGRAM_WEBHOOK_SECRET;
+      else process.env.TELEGRAM_WEBHOOK_SECRET = savedSecret;
+    });
+
+    it('returns 200 when no secret is configured (silent no-op / fast ack)', async () => {
+      delete process.env.TELEGRAM_WEBHOOK_SECRET;
       const res = await request(app.getHttpServer())
         .post('/api/telegram/webhook')
         .send({ update_id: 1, message: { message_id: 1, text: '/help', chat: { id: 1, type: 'private' }, date: 1 } });
-      // No secret configured in this test → endpoint should still accept.
-      // Real "invalid secret" case is covered by guard logic when
-      // TELEGRAM_WEBHOOK_SECRET is set.
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ ok: true });
+    });
+
+    it('rejects with 401 when a secret is configured but the header is missing/wrong', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'test-secret-abc';
+      const res = await request(app.getHttpServer())
+        .post('/api/telegram/webhook')
+        .set('x-telegram-bot-api-secret-token', 'WRONG')
+        .send({ update_id: 2, message: { message_id: 2, text: '/help', chat: { id: 1, type: 'private' }, date: 1 } });
+      expect(res.status).toBe(401);
+    });
+
+    it('accepts with 200 when the secret header matches', async () => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = 'test-secret-abc';
+      const res = await request(app.getHttpServer())
+        .post('/api/telegram/webhook')
+        .set('x-telegram-bot-api-secret-token', 'test-secret-abc')
+        .send({ update_id: 3, message: { message_id: 3, text: '/help', chat: { id: 1, type: 'private' }, date: 1 } });
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ ok: true });
     });

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../app.module';
+import { AiService } from './ai.service';
 
 /**
  * AI endpoints are tested in **demo mode** — LLM_API_KEY is unset before
@@ -42,6 +43,17 @@ describe('AI endpoints (e2e, demo mode)', () => {
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
+
+    // Hard-force demo mode on the live AiService instance. Deleting the
+    // env var before compile isn't enough — a transitive dependency
+    // re-runs dotenv during module init and re-populates LLM_API_KEY,
+    // so AiService would otherwise build a real Anthropic client and
+    // every test would hit the live API (and fail the moment the
+    // account runs out of credits). Nulling the client guarantees
+    // isDemo === true regardless of what the env ends up holding.
+    const aiSvc = app.get(AiService) as unknown as { client: unknown; keyInvalid: boolean };
+    aiSvc.client = null;
+    aiSvc.keyInvalid = false;
 
     // Register a teacher and a student. The DTO doesn't allow setting role
     // directly on register (security), so we promote the teacher via Prisma
