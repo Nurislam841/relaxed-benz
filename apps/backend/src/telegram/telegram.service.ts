@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Bot, GrammyError, HttpError, InlineKeyboard } from 'grammy';
 import type { InputFile } from 'grammy';
+import { sanitizePollArgs } from './telegram-helpers';
 
 /**
  * Minimal token-bucket-ish concurrency limiter — keeps Telegram fan-outs
@@ -260,6 +261,12 @@ export class TelegramService {
     if (!this._bot) return null;
     if (!this.isValidChatId(chatId)) return null;
 
+    // Clamp to Telegram's sendPoll hard limits (see sanitizePollArgs). Without
+    // this, a >300-char question or >100-char option used to silently drop a
+    // Kahoot question.
+    const args = sanitizePollArgs(question, options, correctIndex);
+    if (!args) return null;
+
     try {
       const msg = await this.outboundQueue.add(() =>
         // grammY's typed Bot API uses `correct_option_ids` (array) — Telegram
@@ -267,11 +274,11 @@ export class TelegramService {
         // For a classic single-answer quiz we just wrap one index.
         this._bot!.api.sendPoll(
           chatId,
-          question,
-          options.map((t) => ({ text: t })),
+          args.q,
+          args.opts.map((t) => ({ text: t })),
           {
             type: 'quiz',
-            correct_option_ids: [correctIndex],
+            correct_option_ids: [args.ci],
             explanation: extras?.explanation?.slice(0, 200), // TG hard limit
             is_anonymous: extras?.isAnonymous ?? false,
             open_period: extras?.openPeriodSeconds,

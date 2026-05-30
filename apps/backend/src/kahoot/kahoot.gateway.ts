@@ -133,6 +133,16 @@ export class KahootGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // ── Public lobby state — sent on every join/leave/start ───────────────
 
+  /**
+   * Public hook so the Telegram `/join` path can refresh the host's lobby the
+   * instant a bot user joins (the bot is not a WebSocket client, so it can't
+   * trigger the normal onJoin → emitLobby flow itself).
+   */
+  async refreshLobby(sessionId: string) {
+    if (!this.server) return;
+    await this.emitLobby(sessionId);
+  }
+
   private async emitLobby(sessionId: string) {
     const session = await this.db.quizSession.findUnique({
       where: { id: sessionId },

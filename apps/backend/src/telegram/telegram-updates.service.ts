@@ -10,10 +10,12 @@ import { ScheduleService } from '../schedule/schedule.service';
 import { GradesService } from '../grades/grades.service';
 import { AssignmentsService } from '../assignments/assignments.service';
 import { KahootService } from '../kahoot/kahoot.service';
+import { KahootGateway } from '../kahoot/kahoot.gateway';
 import { StorageService } from '../storage/storage.service';
 import { buildAiPlanPdf, buildStudyGuidePdf } from './kahoot-pdf-builder';
 import { getBackendPublicUrl, getFrontendUrl, getUserFacingBaseUrl } from '../common/public-url';
 import { t, normaliseLang, BOT_LANGS, type BotLang } from './bot-i18n';
+import { commandsForRole } from './telegram-helpers';
 
 /**
  * Inbound message router for the bot.
@@ -54,6 +56,7 @@ export class TelegramUpdatesService implements OnModuleInit {
     @Optional() private readonly grades: GradesService,
     @Optional() @Inject(forwardRef(() => AssignmentsService)) private readonly assignments: AssignmentsService,
     @Optional() @Inject(forwardRef(() => KahootService)) private readonly kahoot: KahootService,
+    @Optional() @Inject(forwardRef(() => KahootGateway)) private readonly kahootGateway: KahootGateway,
   ) {}
 
   async onModuleInit() {
@@ -171,31 +174,10 @@ export class TelegramUpdatesService implements OnModuleInit {
    * Failures are logged but never thrown — a stale menu is cosmetic, not
    * an outage.
    */
-  private async setChatCommands(chatId: number | string, mode: 'unlinked' | 'linked', lang: BotLang) {
+  private async setChatCommands(chatId: number | string, mode: 'unlinked' | Role, lang: BotLang) {
     const bot = this.tg.bot;
     if (!bot) return;
-    const cmds =
-      mode === 'unlinked'
-        ? [
-            // Order matters — Telegram renders the compose menu top-down in
-            // the order we hand it. User asked for [help, link] so /help is
-            // visible above /link even when they don't have a code yet.
-            { command: 'help', description: 'Help' },
-            { command: 'link', description: 'Connect your UniLMS account — /link 123456' },
-          ]
-        : [
-            { command: 'today', description: t('cmdToday', lang).slice(2, 64) },
-            { command: 'schedule', description: t('cmdSchedule', lang).slice(2, 64) },
-            { command: 'grades', description: t('cmdGrades', lang).slice(2, 64) },
-            { command: 'upcoming', description: t('cmdUpcoming', lang).slice(2, 64) },
-            { command: 'ask', description: t('cmdAsk', lang).slice(2, 64) },
-            { command: 'coach', description: t('cmdCoach', lang).slice(2, 64) },
-            { command: 'join', description: t('cmdJoin', lang).slice(2, 64) },
-            { command: 'submit', description: t('cmdSubmit', lang).slice(2, 64) },
-            { command: 'app', description: t('cmdApp', lang).slice(2, 64) },
-            { command: 'help', description: 'Help' },
-            { command: 'unlink', description: t('cmdUnlink', lang).slice(2, 64) },
-          ];
+    const cmds = commandsForRole(mode, lang);
     // Strip leading "/command — " prefixes if present (we sliced after "/")
     // to keep descriptions readable; the menu shows the command separately.
     const cleaned = cmds.map((c) => ({
@@ -235,7 +217,7 @@ export class TelegramUpdatesService implements OnModuleInit {
         });
         const u = await this.findLinkedUser(ctx);
         const lang = this.getLang(ctx, u);
-        await this.setChatCommands(ctx.from.id, 'linked', lang);
+        await this.setChatCommands(ctx.from.id, u?.role ?? Role.STUDENT, lang);
         await ctx.reply(t('linkSuccess', lang));
         return;
       } catch (e) {
@@ -249,7 +231,7 @@ export class TelegramUpdatesService implements OnModuleInit {
     const linked = await this.findLinkedUser(ctx);
     if (linked) {
       const lang = this.getLang(ctx, linked);
-      await this.setChatCommands(ctx.from.id, 'linked', lang);
+      await this.setChatCommands(ctx.from.id, linked.role, lang);
       await ctx.reply(t('welcomeBack', lang, { name: linked.fullName }));
       return;
     }
@@ -287,7 +269,7 @@ export class TelegramUpdatesService implements OnModuleInit {
     }
     // Lock the compose menu to just /link + /help until they finish linking
     // (linked users get the full menu refreshed in their new language).
-    await this.setChatCommands(ctx.from.id, linked ? 'linked' : 'unlinked', lang);
+    await this.setChatCommands(ctx.from.id, linked ? linked.role : 'unlinked', lang);
     await ctx.answerCallbackQuery({ text: t('languageSet', lang).slice(0, 200) }).catch(() => undefined);
     await ctx.reply(t('languageSet', lang));
     if (!linked) {
@@ -331,7 +313,7 @@ export class TelegramUpdatesService implements OnModuleInit {
       // future replies — including ones from web-app-triggered notifications
       // — pick up their choice.
       const memLang = this.tg.getUnlinkedLang(ctx.from.id);
-      await this.db.user.update({
+      const updated = await this.db.user.update({
         where: { id: userId },
         data: {
           telegramChatId: String(ctx.from.id),
@@ -339,10 +321,10 @@ export class TelegramUpdatesService implements OnModuleInit {
         },
       });
       this.tg.clearUnlinkedLang(ctx.from.id);
-      // Refresh the compose menu to the full command list (minus /link)
-      // so the user sees /today, /grades, etc. as soon as they're linked.
+      // Refresh the compose menu — role-scoped so students don't see /at_risk
+      // and teachers don't see /grades (the student-facing version).
       const finalLang = normaliseLang(memLang ?? lang);
-      await this.setChatCommands(ctx.from.id, 'linked', finalLang);
+      await this.setChatCommands(ctx.from.id, updated.role, finalLang);
       await ctx.reply(t('linkSuccess', finalLang));
     } catch (e: any) {
       this.logger.warn(`linkByCode failed for user ${userId}: ${e?.message ?? e}`);
@@ -656,6 +638,12 @@ export class TelegramUpdatesService implements OnModuleInit {
           update: { userId: user.id },
         })
         .catch(() => undefined); // table may not exist yet during migration
+      // Register the player as a real session participant. Without this the
+      // bot user never gets a QuizAttempt, so they're invisible in the host
+      // lobby and finish with 0 points. Then nudge the host's lobby to refresh
+      // instantly (the bot isn't a WebSocket client, so it can't do this itself).
+      await this.kahoot.ensureAttempt(session.sessionId, user.id).catch(() => undefined);
+      await this.kahootGateway?.refreshLobby(session.sessionId).catch(() => undefined);
       await ctx.reply(`✅ Joined "${session.quizTitle}" lobby\\. Wait for the host to start\\.`, {});
     } catch (e: any) {
       await ctx.reply(`❌ ${e?.message || 'Could not join'}`);
@@ -1111,6 +1099,44 @@ export class TelegramUpdatesService implements OnModuleInit {
             data: { pickedIndex, answeredAt: new Date() },
           })
           .catch(() => undefined);
+        // Materialize the broadcast answer as a real QuizAttempt + answer row so
+        // it appears in the same UI as web attempts (Quiz library, attempt list).
+        // Without this the teacher sees the poll picks in Telegram but no row
+        // in /quizzes/<id>.
+        const question = await this.db.quizQuestion.findUnique({
+          where: { id: quizPoll.questionId },
+        });
+        if (question) {
+          const isCorrect = pickedIndex === question.correctIndex;
+          const pointsEarned = isCorrect ? 1 : 0;
+          let attempt = await this.db.quizAttempt.findFirst({
+            where: { quizId: quizPoll.quizId, studentId: user.id, sessionId: null },
+          });
+          if (!attempt) {
+            attempt = await this.db.quizAttempt.create({
+              data: { quizId: quizPoll.quizId, studentId: user.id },
+            });
+          }
+          const already = await this.db.quizAttemptAnswer.findUnique({
+            where: { attemptId_questionId: { attemptId: attempt.id, questionId: question.id } },
+          });
+          if (!already) {
+            await this.db.quizAttemptAnswer.create({
+              data: {
+                attemptId: attempt.id,
+                questionId: question.id,
+                pickedIndex,
+                isCorrect,
+                pointsEarned,
+                responseTimeMs: 0,
+              },
+            });
+            await this.db.quizAttempt.update({
+              where: { id: attempt.id },
+              data: { score: { increment: pointsEarned } },
+            });
+          }
+        }
       }
       return;
     }

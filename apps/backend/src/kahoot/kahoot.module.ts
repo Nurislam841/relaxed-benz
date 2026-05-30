@@ -15,7 +15,8 @@ import { ActivityLogModule } from '../activity-log/activity-log.module';
   controllers: [KahootController],
   providers: [KahootService, KahootGateway],
   // Export so TelegramUpdatesService can resolve /join CODE + the bridge code
-  // in handlePollAnswer can call kahootService.answer.
-  exports: [KahootService],
+  // in handlePollAnswer can call kahootService.answer. KahootGateway is exported
+  // too so the /join path can refresh the host lobby instantly.
+  exports: [KahootService, KahootGateway],
 })
 export class KahootModule {}

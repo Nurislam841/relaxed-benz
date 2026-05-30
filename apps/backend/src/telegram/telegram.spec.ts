@@ -286,3 +286,73 @@ describe('Telegram (e2e)', () => {
     });
   });
 });
+
+// ─── Pure-helper tests (top-level — no app/DB needed). Regression covers
+// §5 (missing Kahoot questions when text exceeded Telegram's hard limits)
+// and §2 (role-based bot compose menu).
+describe('telegram-helpers — pure utilities', () => {
+  const { sanitizePollArgs, commandsForRole } = require('./telegram-helpers');
+  const { Role } = require('@prisma/client');
+
+  describe('sanitizePollArgs (§5 missing-question fix)', () => {
+    it('passes a normal quiz through unchanged', () => {
+      const r = sanitizePollArgs('What is 2+2?', ['1', '2', '3', '4'], 3);
+      expect(r).not.toBeNull();
+      expect(r.q).toBe('What is 2+2?');
+      expect(r.opts).toEqual(['1', '2', '3', '4']);
+      expect(r.ci).toBe(3);
+    });
+
+    it('clamps a question longer than 300 chars (TG hard limit)', () => {
+      const r = sanitizePollArgs('x'.repeat(500), ['a', 'b'], 0);
+      expect(r.q.length).toBe(300);
+    });
+
+    it('clamps each option longer than 100 chars', () => {
+      const r = sanitizePollArgs('Q?', ['y'.repeat(200), 'short'], 0);
+      expect(r.opts[0].length).toBe(100);
+      expect(r.opts[1]).toBe('short');
+    });
+
+    it('caps at 10 options and clamps correctIndex into range', () => {
+      const r = sanitizePollArgs(
+        'Q?',
+        Array.from({ length: 15 }, (_, i) => `o${i}`),
+        13,
+      );
+      expect(r.opts.length).toBe(10);
+      expect(r.ci).toBe(9); // 13 → last valid index
+    });
+
+    it('returns null when fewer than 2 options (poll needs at least two)', () => {
+      expect(sanitizePollArgs('Q?', ['only'], 0)).toBeNull();
+      expect(sanitizePollArgs('Q?', [], 0)).toBeNull();
+    });
+  });
+
+  describe('commandsForRole (§2 role-based menu)', () => {
+    const names = (arr: any[]) => arr.map((c) => c.command);
+
+    it("'unlinked' → exactly [help, link]", () => {
+      expect(names(commandsForRole('unlinked', 'en'))).toEqual(['help', 'link']);
+    });
+
+    it('STUDENT sees /grades /join /submit /coach; NOT /at_risk /bind /today_attendance', () => {
+      const cs = names(commandsForRole(Role.STUDENT, 'en'));
+      for (const c of ['today', 'grades', 'join', 'submit', 'coach']) expect(cs).toContain(c);
+      for (const c of ['at_risk', 'bind', 'unbind', 'today_attendance']) expect(cs).not.toContain(c);
+    });
+
+    it('TEACHER sees /at_risk /bind /today_attendance; NOT /grades /join /submit /coach', () => {
+      const cs = names(commandsForRole(Role.TEACHER, 'en'));
+      for (const c of ['at_risk', 'today_attendance', 'bind', 'unbind']) expect(cs).toContain(c);
+      for (const c of ['grades', 'join', 'submit', 'coach']) expect(cs).not.toContain(c);
+    });
+
+    it('ADMIN gets a lean cross-cutting menu (no /today /schedule /grades)', () => {
+      const cs = names(commandsForRole(Role.ADMIN, 'en'));
+      for (const c of ['ask', 'at_risk', 'today_attendance', 'app', 'help', 'unlink']) expect(cs).toContain(c);
+      for (const c of ['today', 'schedule', 'grades', 'join', 'submit']) expect(cs).not.toContain(c);
+    });
+  });
+});

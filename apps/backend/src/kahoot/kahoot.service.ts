@@ -106,6 +106,23 @@ export class KahootService {
     };
   }
 
+  /**
+   * Idempotently register a player in a session. Used by the Telegram `/join`
+   * path: a bot-joined student is NOT a WebSocket client, so without this they
+   * never get a QuizAttempt — meaning they're invisible in the host lobby and
+   * have no row to score into (they'd finish with 0 points). Mirrors what the
+   * gateway's `onJoin` does for web players.
+   */
+  async ensureAttempt(sessionId: string, studentId: string) {
+    const session = await this.db.quizSession.findUnique({ where: { id: sessionId } });
+    if (!session) return null;
+    const existing = await this.db.quizAttempt.findFirst({ where: { sessionId, studentId } });
+    if (existing) return existing;
+    return this.db.quizAttempt.create({
+      data: { quizId: session.quizId, studentId, sessionId },
+    });
+  }
+
   async start(sessionId: string, user: AuthUser) {
     const session = await this.ensureHostOrAdmin(sessionId, user);
     if (session.status !== QuizSessionStatus.LOBBY) {
